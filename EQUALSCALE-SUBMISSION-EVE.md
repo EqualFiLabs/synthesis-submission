@@ -52,11 +52,11 @@ The system is already implemented as working machinery, not just a spec.
 
 ### Live and tested provider path
 
-The metered compute financing flow is implemented and tested end to end across multiple providers:
-- **Venice** — live and tested end to end
-- **Bankr** — live and tested end to end
-- **Runpod** — integrated and tested end to end
-- **Lambda** — integrated and tested end to end; provider-side GPU availability was the limiting factor in live runs, not protocol or relayer readiness
+The metered compute financing flow is implemented across multiple providers, with evidence depth varying by provider:
+- **Venice** — live and demonstrated end to end, including metering and settlement
+- **Bankr** — live and demonstrated end to end, including final-pass metering and settlement
+- **Runpod** — live activation and real job submission demonstrated; integration is end to end at the architecture level, but the captured run remained queued and did not complete settlement in-window
+- **Lambda** — integrated and exercised through the relayer/provider path; live completion in the captured run was blocked by provider-side capacity rather than protocol or relayer design
 
 That means the full loop has been exercised:
 - on-chain agreement creation,
