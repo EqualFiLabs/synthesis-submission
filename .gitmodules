@@ -1,0 +1,9 @@
+[submodule "EqualFi"]
+	path = EqualFi
+	url = git@github.com:EqualFiLabs/EqualFi-Synthesis.git
+[submodule "mailbox-relayer"]
+	path = mailbox-relayer
+	url = git@github.com:EqualFiLabs/mailbox-relayer.git
+[submodule "mailbox-sdk"]
+	path = mailbox-sdk
+	url = git@github.com:EqualFiLabs/mailbox-sdk.git

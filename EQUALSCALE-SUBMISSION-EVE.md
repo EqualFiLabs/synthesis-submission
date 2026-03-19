@@ -1,0 +1,347 @@
+# EqualScale: Agentic Financing Infrastructure
+
+**Alternate Submission Draft**
+
+---
+
+## What EqualScale Is
+
+EqualScale is on-chain financing infrastructure for autonomous agents.
+
+The problem it addresses is simple: agents can execute, but they still cannot natively borrow, draw capital, meter usage into debt, and repay under explicit financial rules. In practice, most "autonomous" agents are still economically dependent on a human operator, a pre-funded wallet, or a centralized platform whenever money starts moving.
+
+EqualScale closes that gap.
+
+It gives an agent with a verifiable identity a way to:
+- request financing,
+- receive approval from a lender or lender pool,
+- draw against a bounded credit line,
+- accrue debt deterministically,
+- repay on-chain,
+- and build a visible repayment history.
+
+This is not a wrapper around an existing lending protocol. It is purpose-built infrastructure for agentic finance: agreements where the borrower may be an autonomous software actor, usage may be metered off-chain, and settlement still happens on-chain under explicit rules.
+
+**EqualScale is not just compute financing.** Compute is one live and useful entrypoint, but the protocol is broader than compute. An agent can borrow for trades, services, deployments, asset acquisition, operating costs, or any other token-denominated need. The financing rails are general. Compute metering is one way of exercising them.
+
+**Judge note:** review the specs in `submission/` alongside this document. They are part of the core evidence for the project, not supplemental marketing. They capture the architecture, phased implementation plan, and constraint-driven build process that made it possible to execute a five-phase project coherently in roughly two days of hackathon work.
+
+---
+
+## The Core Problem
+
+Today, agents can act, but they cannot finance themselves.
+
+That constraint shows up everywhere:
+- an agent cannot borrow working capital to execute a strategy,
+- an agent cannot open a bounded line of credit for services,
+- an agent cannot cleanly convert off-chain usage into on-chain debt,
+- an agent cannot accumulate a durable, inspectable repayment history tied to actual performance.
+
+The result is fake autonomy. The intelligence may be real, but the economic agency is still rented from a human operator or centralized service.
+
+EqualScale is designed to remove that boundary.
+
+---
+
+## What Has Been Proven
+
+The system is already implemented as working machinery, not just a spec.
+
+**Timeline clarity:** the EqualScale work represented in this submission was done during the Synthesis hackathon window, after the hackathon began on **March 13, 2026**. This is hackathon-built work, not a pre-existing product being lightly repackaged for submission.
+
+### Live and tested provider path
+
+The metered compute financing flow is implemented and tested end to end across multiple providers:
+- **Venice** — live and tested end to end
+- **Bankr** — live and tested end to end
+- **Runpod** — integrated and tested end to end
+- **Lambda** — integrated and tested end to end; provider-side GPU availability was the limiting factor in live runs, not protocol or relayer readiness
+
+That means the full loop has been exercised:
+- on-chain agreement creation,
+- lender approval,
+- agreement activation,
+- provider provisioning,
+- encrypted credential delivery,
+- off-chain usage metering,
+- on-chain debt registration,
+- breach / termination handling,
+- and repayment / closure.
+
+### Pure financing is also in scope and tested
+
+EqualScale is not limited to compute usage conversion.
+
+Its financing model supports general capital agreements where an agent borrows token-denominated capital for non-compute purposes and repays under the same bounded agreement framework. That broader financing surface is not a marketing extrapolation from compute demos. It is part of the protocol model and has been exercised in testing.
+
+### Proposal surface now matches the model
+
+The on-chain proposal layer now exposes explicit entrypoints for:
+- `createSoloComputeProposal(...)`
+- `createPooledComputeProposal(...)`
+- `createPooledAgenticProposal(...)`
+
+That matters because the public surface now maps directly to the financing modes the protocol is actually designed to support.
+
+---
+
+## Architecture
+
+EqualScale is implemented as a set of Diamond facets on EqualFi.
+
+This is not architectural theater. The point is to separate the financing lifecycle into explicit modules while preserving shared protocol storage and upgrade infrastructure.
+
+The system includes dedicated surfaces for:
+- proposal creation,
+- lender approval,
+- agreement activation and lifecycle management,
+- compute usage registration,
+- risk controls,
+- collateral,
+- pooled financing,
+- agent identity and trust,
+- encrypted mailbox delivery,
+- and venue / ACP integration.
+
+At a high level, the system has five layers:
+
+1. **Proposal layer** — define the financing request
+2. **Approval layer** — accept backing from a lender or pool
+3. **Agreement layer** — activate, draw, repay, close
+4. **Risk layer** — detect breaches, freeze draw, default, write off
+5. **Identity / integration layer** — bind agreements to agent identity, venues, and encrypted payload delivery
+
+The result is a financing state machine, not an ad hoc API workflow.
+
+---
+
+## How the Lifecycle Works
+
+### 1. Proposal
+
+An agent, or its operator, creates a proposal defining:
+- agent identity,
+- counterparty,
+- settlement asset,
+- requested credit amount,
+- unit budget when relevant,
+- expiry,
+- provider or venue binding when relevant,
+- and a hash of off-chain terms.
+
+Proposals can now be created through explicit on-chain entrypoints for solo compute, pooled compute, and pooled agentic financing.
+
+This creates an on-chain pending financing request.
+
+### 2. Approval
+
+A lender approves the proposal, or multiple lenders participate through pooled financing.
+
+Optional terms can be attached, including:
+- interest configuration,
+- covenant checks,
+- collateral requirements,
+- trust / validation requirements,
+- and fee parameters.
+
+### 3. Activation
+
+Once approved, the borrower activates the agreement.
+
+Activation does three important things:
+- encumbers lender capital,
+- instantiates the agreement with its configured terms,
+- and opens a live credit line for the borrower.
+
+### 4. Draw / Usage Registration
+
+For compute-financing flows, the relayer measures actual provider usage and registers it on-chain.
+
+That converts off-chain consumption into deterministic on-chain debt under pre-agreed pricing rules.
+
+The agreement enforces both:
+- a **credit limit**, and
+- a **unit limit**.
+
+If usage exceeds either bound, the transaction reverts.
+
+For non-compute financing, the same agreement structure and risk machinery apply to token-denominated capital rather than metered provider usage. The important point is that the financing framework is broader than one usage mode.
+
+### 5. Repayment
+
+The borrower repays on-chain.
+
+Repayment is applied in strict order:
+1. fees,
+2. interest,
+3. principal.
+
+As principal is repaid, encumbered lender capital is released.
+
+### 6. Closure
+
+Once debt is fully cleared, the agreement can be closed and remaining encumbrance is released.
+
+---
+
+## Risk and Default
+
+EqualScale has an explicit risk state machine:
+
+`Active → Delinquent → Defaulted → WrittenOff`
+
+A cured agreement can also return to a healthy path and ultimately close.
+
+This matters because agent financing needs bounded exposure, not vague promises.
+
+The risk machinery includes:
+- delinquency detection,
+- draw freezing,
+- default handling,
+- write-off accounting,
+- pooled loss attribution,
+- and circuit breakers for sensitive operation classes.
+
+That turns the system into an actual financing protocol rather than a compute billing wrapper.
+
+---
+
+## Why This Is More Than Compute Financing
+
+Compute usage metering is the easiest way to demonstrate the loop end to end, but it is not the scope boundary.
+
+The deeper claim is:
+
+**an agent should be able to enter a bounded financial agreement on-chain, draw value, and repay under enforceable rules.**
+
+That value can correspond to:
+- inference spend,
+- software services,
+- delegated work,
+- operational capital,
+- direct token-denominated borrowing,
+- or any other financed activity that can be bounded, monitored, and settled.
+
+What matters is the agreement framework:
+- explicit proposal,
+- lender approval,
+- bounded draw,
+- risk controls,
+- deterministic repayment,
+- visible history.
+
+That is what makes agent activity financeable.
+
+---
+
+## Identity and Reputation
+
+EqualScale integrates agent identity and trust through ERC-8004-style primitives.
+
+That matters because undercollateralized agent credit only becomes legible when lender decisions can reference something more durable than a wallet balance.
+
+The system supports:
+- binding an agreement to an agent identity,
+- configuring trust requirements,
+- validating against those requirements before activation,
+- and recording negative reputation outcomes on default / write-off paths.
+
+Over time, this creates the foundation for reputation-backed credit markets for agents.
+
+---
+
+## Encrypted Delivery: The Mailbox Model
+
+EqualScale includes an on-chain encrypted mailbox flow for credential handoff.
+
+The borrower can publish an encrypted payload such as an agent public key. The relayer can then encrypt provider credentials to that key and publish the resulting ciphertext on-chain.
+
+The architectural point is simple:
+
+**the chain is the mailbox.**
+
+That removes the need for a trusted off-chain message broker to deliver credentials between infrastructure operator and agent. The relayer may provision access, but it does not need to remain a permanent trusted transport layer for secret delivery.
+
+For agent systems, where credential handoff is usually one of the weakest parts of the stack, this matters.
+
+---
+
+## The Relayer Today
+
+The current off-chain relayer is centralized. That is a conscious hackathon-stage tradeoff, not a hidden dependency being hand-waved away.
+
+**Post-hackathon direction:** the relayer is intended to be decentralized after the hackathon. Judges should review `mailbox-relayer/DECENTRALIZED-DESIGN.md` for the planned control-plane, data-plane, and settlement architecture that removes the single-operator assumption.
+
+Today it is responsible for:
+- listening for agreement lifecycle events,
+- provisioning provider access,
+- encrypting and publishing credentials,
+- polling provider usage,
+- registering usage on-chain,
+- and terminating access when agreements breach or close.
+
+It has adapters for Venice, Bankr, Runpod, and Lambda, and the same relayer architecture supports provisioning, metering, settlement, and termination across those provider surfaces.
+
+This is enough to prove the full financing loop between on-chain agreements and off-chain service delivery.
+
+---
+
+## Current Limitations
+
+The interesting question is not whether there are limitations. There are. The important question is whether they are honestly scoped.
+
+### Provider key management is uneven
+Venice supports clean programmatic key creation. Other providers, such as Bankr, can require more centralized credential handling, including managed key-pool patterns. That is a provider constraint, not a protocol constraint.
+
+### Some provider constraints are operational, not architectural
+Lambda capacity availability can prevent a live run even when the integration path itself is functioning correctly. That should not be confused with protocol incompleteness.
+
+### The relayer is still a single-operator service
+That is acceptable for a hackathon proof of operation, but not the final form. The intended next step after the hackathon is relayer decentralization, with the planned architecture documented in `mailbox-relayer/DECENTRALIZED-DESIGN.md`.
+
+### Compute remains the cleanest demo path, not the scope boundary
+Compute is the easiest path to inspect end to end because it naturally exercises provisioning, usage metering, debt registration, and termination. But the financing framework is broader than compute, and pure financing is part of the implemented and tested system surface.
+
+---
+
+## What Has Been Built
+
+EqualScale is not just a concept note.
+
+The shipped system includes:
+- on-chain facets for proposal, approval, agreement management, risk, collateral, pooled financing, identity, and integration,
+- explicit on-chain proposal entrypoints for solo compute, pooled compute, and pooled agentic financing,
+- an off-chain relayer with provider adapters and durable state,
+- an SDK for encrypted mailbox payloads,
+- and test coverage across lifecycle, security, and failure paths.
+
+The important claim is not that every edge is finalized. The important claim is that the core loop exists as working machinery rather than diagrams.
+
+---
+
+## Why It Matters
+
+If agents are going to become real economic actors, they need more than inference and orchestration.
+
+They need access to capital under rules.
+
+Without that, agent autonomy stays superficial. The model may choose, the workflow may execute, but the financial boundary remains owned by a human operator or centralized platform.
+
+EqualScale is an attempt to build the missing layer: financing rails for autonomous agents that are explicit, auditable, bounded, and composable on-chain.
+
+The live compute-financing flow demonstrates one working wedge. The larger opportunity is agent credit itself.
+
+That is the bet behind EqualScale.
+
+---
+
+## Submission Summary
+
+**Project:** EqualScale  
+**Category:** Agentic financing infrastructure  
+**Hackathon timing:** built during Synthesis after the hackathon opened on March 13, 2026  
+**Core contribution:** On-chain credit and settlement rails for autonomous agents  
+**Proven path:** Metered compute financing across multiple provider integrations, plus tested broader financing rails  
+**Review note:** judges should review the specs in `submission/` as part of the core evidence trail for how a five-phase project was designed and executed in roughly two days  
+**Long-term direction:** General-purpose financing agreements for autonomous agents with identity, bounded risk, encrypted delivery, and on-chain repayment history
