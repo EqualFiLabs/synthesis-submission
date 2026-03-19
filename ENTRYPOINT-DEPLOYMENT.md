@@ -6,6 +6,10 @@
 
 ## Overview
 
+This guide covers deploying the full ERC-4337 stack locally.
+
+**Scope note:** this document is an operator-facing local deployment guide, not a claim that the submission repo is a turnkey one-command demo environment for every reviewer. Some flows require external API credentials, local dependencies, and provider availability.
+
 This guide covers deploying the full ERC-4337 stack locally:
 
 | Component | Purpose |

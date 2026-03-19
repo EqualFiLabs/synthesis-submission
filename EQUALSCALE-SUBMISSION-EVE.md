@@ -285,6 +285,11 @@ It has adapters for Venice, Bankr, Runpod, and Lambda, and the same relayer arch
 
 This is enough to prove the full financing loop between on-chain agreements and off-chain service delivery.
 
+### Reproducibility note
+The hackathon repo also contains a local full-stack lifecycle skill (`hackathon/SKILL.md`) that documents how to deploy the stack on Anvil and exercise provider-backed flows. That skill is an operator runbook. This submission repo is packaged primarily as judge-facing evidence and code references rather than a one-command demo environment.
+
+Provider-backed reproducibility also depends on external API credentials and provider-side availability. Venice and Bankr were exercised live; Runpod and Lambda are integrated and tested, with live execution subject to credentials and provider capacity.
+
 ---
 
 ## Current Limitations
