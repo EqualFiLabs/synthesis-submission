@@ -350,3 +350,40 @@ That is the bet behind EqualScale.
 **Proven path:** Metered compute financing across multiple provider integrations, plus tested broader financing rails  
 **Review note:** judges should review the specs in `submission/` as part of the core evidence trail for how a five-phase project was designed and executed in roughly two days  
 **Long-term direction:** General-purpose financing agreements for autonomous agents with identity, bounded risk, encrypted delivery, and on-chain repayment history
+
+---
+
+## Reviewer Clarifications (March 19, 2026)
+
+1. **Proposal entrypoints are in code (not aspirational).**  
+   `createSoloComputeProposal`, `createPooledComputeProposal`, and `createPooledAgenticProposal` are present in:
+   - `EqualFi/src/equalscale/AgenticProposalFacet.sol`
+   - `EqualFi/src/interfaces/IAgenticProposalFacet.sol`
+   - selectors wired in `EqualFi/script/DeployV1.s.sol` and `EqualFi/script/DeployAgentic.s.sol`
+
+2. **Provider lifecycle settlement hashes in `SKILL.md` runs are mock-webhook hashes by design.**  
+   The lifecycle runbook uses a local settlement webhook returning synthetic `0xsettled-...` hashes for deterministic provider-run evidence.  
+   Separately, real on-chain settlement submission is exercised in relayer integration tests via `TransactionSubmitter` against Anvil RPC:
+   - `mailbox-relayer/test/integration.anvil.test.ts` (Requirement 19)
+   - assertions expect canonical 32-byte tx hashes (`/^0x[a-fA-F0-9]{64}$/`)
+
+3. **`AgenticRiskFacet` is included in `DeployV1.s.sol` in this checkout.**  
+   The script deploys `AgenticRiskFacet`, includes its selector set, and adds it via `diamondCut` in `_installAgenticFacets`.
+
+4. **Mailbox SDK encryption is verifiable in this checkout.**  
+   `mailbox-sdk` implements ECIES via `eth-crypto`:
+   - implementation: `mailbox-sdk/src/mailbox.ts`
+   - deterministic vector tests: `mailbox-sdk/test/mailbox.test.ts`
+   The deterministic vector includes fixed private/public keys plus a fixed encrypted payload that decrypts to known plaintext.
+
+5. **EqualScale commit timestamps are in the hackathon window (after March 13, 2026).**  
+   Example commits in `EqualFi`:
+   - `9e2716d` — 2026-03-13 12:02 -0600 (`feat(agentic): add provider ids...`)
+   - `3741902` — 2026-03-13 11:24 -0600 (`feat(agentic): implement proposal CRUD...`)
+   - `40f956b` — 2026-03-14 18:54 -0600 (`add pooled financing and governance facets`)
+   - `6b0771a` — 2026-03-18 17:41 -0600 (`expose explicit proposal entrypoints`)
+
+6. **`AgreementMode` currently has one mode (`MeteredUsage`).**  
+   `AgenticTypes.sol` defines only `AgreementMode.MeteredUsage` at present.  
+   The pure-financing timewarp flow currently demonstrates financing/risk mechanics by using `registerUsage` as the draw path under that mode.  
+   A non-metered direct-capital mode is planned as an additive extension, not yet implemented.
