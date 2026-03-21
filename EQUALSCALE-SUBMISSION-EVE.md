@@ -341,6 +341,35 @@ That is the bet behind EqualScale.
 
 ---
 
+## Track-Specific Notes
+
+### Venice / Private Agents, Trusted Actions
+EqualScale fits this track by turning private or semi-private agent work into financeable activity under explicit rules. In the current system, Venice serves as an inference rail that can sit behind a bounded financing agreement, allowing an agent to consume paid inference without requiring an always-preloaded operator wallet.
+
+**DIEM Inference Lending Extension** — We have designed a dedicated inference-financing path for Venice's DIEM credit system. The full spec is in `submission/diem-inference-lending-spec.md`. The core thesis:
+
+- DIEM holders who are not using their full daily $1/DIEM allocation can deposit into a lending pool
+- Borrowers post USDC collateral and receive scoped Venice child API keys (not DIEM principal)
+- Usage is metered per key and converts to USDC-denominated debt
+- Default triggers key revocation first, then collateral recovery
+- The protocol controls DIEM custody; borrowers only receive bounded inference access
+
+This extends the same financing framework into a Venice-native product where the capital asset is DIEM credits, not generic USDC. It is a concrete demonstration of how EqualScale's general financing rails can specialize for venue-specific capital structures without forking the underlying agreement model.
+
+The important point for this track is that trusted action is not treated as a vague orchestration story. It is tied to a credit framework with approval, limits, metering, repayment, and failure handling.
+
+### Bankr / Best Bankr LLM Gateway Use
+EqualScale fits the Bankr track by treating Bankr as a live inference-provider rail inside an on-chain financing lifecycle. That means an agent can access Bankr-backed inference under a bounded agreement, with usage converted into explicit debt and settled on-chain under pre-agreed rules. The relevant contribution here is not just “we called Bankr.” It is that Bankr usage is integrated into a broader financial control plane for agents.
+
+### ERC-8183 Open Build
+EqualScale fits this track through full ACP / ERC-8183 lifecycle integration in code. The system links financing agreements to ACP jobs, supports adapter-based venue routing, and synchronizes job outcomes like completion, rejection, and refund handling back into agreement accounting. The point is that ACP becomes more than a coordination rail. In EqualScale, it becomes finance-aware infrastructure.
+
+### ERC-8004 / Agents With Receipts
+EqualScale fits this track by binding financing agreements to verifiable agent identity and trust surfaces. ERC-8004-style identity makes it possible to evaluate borrowers as agents rather than anonymous wallets, and to attach durable history to financing outcomes such as repayment, delinquency, or write-off. In that sense, the “receipt” is not just a transaction trace. It is an inspectable financing history tied to agent identity.
+
+### Synthesis Open Track
+EqualScale fits the open track because it combines the full stack into one coherent system: agent identity, financing, inference access, compute access, encrypted delivery, risk state transitions, and on-chain settlement. The broader claim is that agents should not only be able to act. They should be able to enter bounded financial agreements, draw resources, repay obligations, and build durable economic history.
+
 ## Submission Summary
 
 **Project:** EqualScale  
@@ -351,39 +380,3 @@ That is the bet behind EqualScale.
 **Review note:** judges should review the specs in `submission/` as part of the core evidence trail for how a five-phase project was designed and executed in roughly two days  
 **Long-term direction:** General-purpose financing agreements for autonomous agents with identity, bounded risk, encrypted delivery, and on-chain repayment history
 
----
-
-## Reviewer Clarifications (March 19, 2026)
-
-1. **Proposal entrypoints are in code (not aspirational).**  
-   `createSoloComputeProposal`, `createPooledComputeProposal`, and `createPooledAgenticProposal` are present in:
-   - `EqualFi/src/equalscale/AgenticProposalFacet.sol`
-   - `EqualFi/src/interfaces/IAgenticProposalFacet.sol`
-   - selectors wired in `EqualFi/script/DeployV1.s.sol` and `EqualFi/script/DeployAgentic.s.sol`
-
-2. **Provider lifecycle settlement hashes in `SKILL.md` runs are mock-webhook hashes by design.**  
-   The lifecycle runbook uses a local settlement webhook returning synthetic `0xsettled-...` hashes for deterministic provider-run evidence.  
-   Separately, real on-chain settlement submission is exercised in relayer integration tests via `TransactionSubmitter` against Anvil RPC:
-   - `mailbox-relayer/test/integration.anvil.test.ts` (Requirement 19)
-   - assertions expect canonical 32-byte tx hashes (`/^0x[a-fA-F0-9]{64}$/`)
-
-3. **`AgenticRiskFacet` is included in `DeployV1.s.sol` in this checkout.**  
-   The script deploys `AgenticRiskFacet`, includes its selector set, and adds it via `diamondCut` in `_installAgenticFacets`.
-
-4. **Mailbox SDK encryption is verifiable in this checkout.**  
-   `mailbox-sdk` implements ECIES via `eth-crypto`:
-   - implementation: `mailbox-sdk/src/mailbox.ts`
-   - deterministic vector tests: `mailbox-sdk/test/mailbox.test.ts`
-   The deterministic vector includes fixed private/public keys plus a fixed encrypted payload that decrypts to known plaintext.
-
-5. **EqualScale commit timestamps are in the hackathon window (after March 13, 2026).**  
-   Example commits in `EqualFi`:
-   - `9e2716d` — 2026-03-13 12:02 -0600 (`feat(agentic): add provider ids...`)
-   - `3741902` — 2026-03-13 11:24 -0600 (`feat(agentic): implement proposal CRUD...`)
-   - `40f956b` — 2026-03-14 18:54 -0600 (`add pooled financing and governance facets`)
-   - `6b0771a` — 2026-03-18 17:41 -0600 (`expose explicit proposal entrypoints`)
-
-6. **`AgreementMode` currently has one mode (`MeteredUsage`).**  
-   `AgenticTypes.sol` defines only `AgreementMode.MeteredUsage` at present.  
-   The pure-financing timewarp flow currently demonstrates financing/risk mechanics by using `registerUsage` as the draw path under that mode.  
-   A non-metered direct-capital mode is planned as an additive extension, not yet implemented.
