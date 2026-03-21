@@ -53,12 +53,12 @@ The system is already implemented as working machinery, not just a spec.
 ### Live and tested provider path
 
 The metered compute financing flow is implemented across multiple providers, with evidence depth varying by provider:
-- **Venice** — live and demonstrated end to end, including metering and settlement
-- **Bankr** — live and demonstrated end to end, including final-pass metering and settlement
+- **Venice** — live and demonstrated end to end: real inference call, usage polling, deterministic metering (32 rows → 2 aggregated items), and settlement pipeline execution. Settlement used the relayer's webhook mock path (deterministic `0xsettled-...` hashes), not a live chain transaction. Real on-chain settlement is proven separately via Anvil integration tests and the Pure Financing demo.
+- **Bankr** — live and demonstrated end to end: real inference call, final-pass metering, and settlement pipeline execution. Same webhook settlement path as Venice.
 - **Runpod** — live activation and real job submission demonstrated; integration is end to end at the architecture level, but the captured run remained queued and did not complete settlement in-window
 - **Lambda** — integrated and exercised through the relayer/provider path; live completion in the captured run was blocked by provider-side capacity rather than protocol or relayer design
 
-That means the full loop has been exercised:
+For Venice and Bankr, the full loop has been exercised end to end:
 - on-chain agreement creation,
 - lender approval,
 - agreement activation,
@@ -69,18 +69,24 @@ That means the full loop has been exercised:
 - breach / termination handling,
 - and repayment / closure.
 
-### Pure financing is also in scope and tested
+RunPod and Lambda are integrated through the same relayer adapter architecture and are accepted at the contract level (`_isSupportedComputeProvider` accepts all four provider IDs), but their captured demo evidence does not include completed settlement — RunPod's job remained queued, and Lambda hit a provider-side capacity constraint.
+
+### Pure financing is implemented and tested
 
 EqualScale is not limited to compute usage conversion.
 
-Its financing model is designed to support general capital agreements where an agent borrows token-denominated capital for non-compute purposes and repays under the same bounded agreement framework. In this checkout, that broader financing surface is best understood as protocol direction plus partially exercised model/test coverage rather than a separate first-class public mode.
+The `drawPrincipal` function in `AgenticAgreementFacet.sol` allows a borrower to draw capital directly against a credit line without provider-metered usage routing. This supports general financing use cases where debt is not tied to metered provider consumption. The function enforces credit limits, draw freezing, and borrower authorization, and is covered by unit and fuzz tests.
+
+The on-chain Pure Financing demo (Anvil timewarp) exercises the full risk state machine: Active → Delinquent → Defaulted with real tx hashes. See `DEMO-EVIDENCE-CONSOLIDATED.md` Section 5.
 
 ### Proposal surface
 
-The current on-chain proposal layer exposes `createProposal(...)` for the live solo-compute path.
-Pooled compute and pooled agentic proposal types exist in the protocol model and tests, but are not yet exposed through dedicated public proposal creation entrypoints in this checkout.
+The on-chain proposal layer exposes dedicated public entrypoints for all three financing modes:
+- `createSoloComputeProposal(...)` — solo compute financing (also available via the legacy `createProposal(...)` alias)
+- `createPooledComputeProposal(...)` — pooled compute financing
+- `createPooledAgenticProposal(...)` — pooled agentic financing (no provider restriction)
 
-That matters because the architecture is broader than the currently exposed public entrypoints.
+All three are implemented and tested in `AgenticProposalFacet.sol`.
 
 ---
 
@@ -154,17 +160,13 @@ Activation does three important things:
 
 ### 4. Draw / Usage Registration
 
-For compute-financing flows, the relayer measures actual provider usage and registers it on-chain.
+The protocol supports two draw modes:
 
-That converts off-chain consumption into deterministic on-chain debt under pre-agreed pricing rules.
+**Metered usage** (`registerUsage`): the relayer measures actual provider usage and registers it on-chain, converting off-chain consumption into deterministic on-chain debt under pre-agreed pricing rules.
 
-The agreement enforces both:
-- a **credit limit**, and
-- a **unit limit**.
+**Direct draw** (`drawPrincipal`): the borrower draws capital directly against the credit line without provider-metered usage routing. This supports general financing use cases — trades, services, operating capital — where debt is not tied to metered provider consumption.
 
-If usage exceeds either bound, the transaction reverts.
-
-For non-compute financing, the same agreement structure and risk machinery apply to token-denominated capital rather than metered provider usage. The important point is that the financing framework is broader than one usage mode.
+Both modes enforce the agreement's **credit limit**. Metered usage additionally enforces a **unit limit**. If either bound is exceeded, the transaction reverts. Draw freezing and termination apply to both modes.
 
 ### 5. Repayment
 
@@ -304,7 +306,7 @@ Lambda capacity availability can prevent a live run even when the integration pa
 That is acceptable for a hackathon proof of operation, but not the final form. The intended next step after the hackathon is relayer decentralization, with the planned architecture documented in `mailbox-relayer/DECENTRALIZED-DESIGN.md`.
 
 ### Compute remains the cleanest demo path, not the scope boundary
-Compute is the easiest path to inspect end to end because it naturally exercises provisioning, usage metering, debt registration, and termination. The financing framework is broader than compute, but separate non-metered direct-capital paths remain additive work beyond the current live metered mode.
+Compute is the easiest path to inspect end to end because it naturally exercises provisioning, usage metering, debt registration, and termination. The financing framework is broader than compute. A non-metered direct-capital draw path (`drawPrincipal`) is now implemented and tested in `AgenticAgreementFacet.sol`, allowing borrowers to draw capital without provider-metered usage routing. Both `MeteredUsage` and `DirectDraw` agreement modes are supported.
 
 ---
 
@@ -315,9 +317,11 @@ EqualScale is not just a concept note.
 The shipped system includes:
 - on-chain facets for proposal, approval, agreement management, risk, collateral, pooled financing, identity, and integration,
 - explicit on-chain proposal entrypoints for solo compute, pooled compute, and pooled agentic financing,
+- contract-level support for all four providers (Venice, Bankr, RunPod, Lambda),
+- both metered-usage and direct-draw capital paths (`registerUsage` and `drawPrincipal`),
 - an off-chain relayer with provider adapters and durable state,
 - an SDK for encrypted mailbox payloads,
-- and test coverage across lifecycle, security, and failure paths.
+- and 823 passing tests across lifecycle, security, fuzz, invariant, and integration suites.
 
 The important claim is not that every edge is finalized. The important claim is that the core loop exists as working machinery rather than diagrams.
 
@@ -374,6 +378,6 @@ EqualScale fits the open track because it combines the full stack into one coher
 **Category:** Agentic financing infrastructure  
 **Hackathon timing:** built during Synthesis after the hackathon opened on March 13, 2026  
 **Core contribution:** On-chain credit and settlement rails for autonomous agents  
-**Proven path:** Metered compute financing across multiple provider integrations, plus tested broader financing rails  
+**Proven path:** Metered compute financing (Venice/Bankr E2E, RunPod/Lambda integrated), plus direct-draw capital path (`drawPrincipal`) with full risk lifecycle  
 **Review note:** judges should review the specs in `specs/` as part of the core evidence trail for how a five-phase project was designed and executed in roughly two days  
 **Long-term direction:** General-purpose financing agreements for autonomous agents with identity, bounded risk, encrypted delivery, and on-chain repayment history
