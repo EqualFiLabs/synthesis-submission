@@ -53,8 +53,8 @@ The system is already implemented as working machinery, not just a spec.
 ### Live and tested provider path
 
 The metered compute financing flow is implemented across multiple providers, with evidence depth varying by provider:
-- **Venice** — live and demonstrated end to end: real inference call, usage polling, deterministic metering (32 rows → 2 aggregated items), and settlement pipeline execution. Settlement used the relayer's webhook mock path (deterministic `0xsettled-...` hashes), not a live chain transaction. Real on-chain settlement is proven separately via Anvil integration tests and the Pure Financing demo.
-- **Bankr** — live and demonstrated end to end: real inference call, final-pass metering, and settlement pipeline execution. Same webhook settlement path as Venice.
+- **Venice** — live and demonstrated end to end: real inference call, usage polling, deterministic metering (32 rows → 2 aggregated items), and settlement pipeline execution. The initial lifecycle demo used the relayer's webhook mock path for settlement. Real on-chain settlement is now proven via the Phase 2 `TransactionSubmitter` proof run (`DEMO-EVIDENCE-CONSOLIDATED.md` Section 6), which submitted `registerUsage()` to Anvil and produced a verified tx hash (`0xae0ffaec...6e5bc8`, block 87, status: success).
+- **Bankr** — live and demonstrated end to end: real inference call, final-pass metering, and settlement pipeline execution. Same real on-chain settlement proof (`0x30213593...656625`, block 88, status: success).
 - **Runpod** — live activation and real job submission demonstrated; integration is end to end at the architecture level, but the captured run remained queued and did not complete settlement in-window
 - **Lambda** — integrated and exercised through the relayer/provider path; live completion in the captured run was blocked by provider-side capacity rather than protocol or relayer design
 

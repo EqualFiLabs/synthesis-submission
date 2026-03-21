@@ -17,6 +17,7 @@ For full raw JSON, see the individual source files listed at the end.
 | RunPod Real Job | RunPod | N/A | N/A | N/A | N/A | Real API call, job accepted |
 | Lambda Live | Lambda | error (insufficient capacity) | skipped | none | breach → close | Provider reached |
 | Pure Financing (Anvil) | N/A | N/A | registerUsage tx | N/A | Active → Delinquent → Defaulted | **Full on-chain lifecycle** |
+| Phase 2 Settlement Proof | Venice + Bankr | N/A | N/A | 2 real Anvil txs | N/A | **Real on-chain settlement** |
 
 ---
 
@@ -157,11 +158,39 @@ This demonstrates the complete on-chain financing state machine with no external
 
 ---
 
+## 6. Real On-Chain Settlement Proof (Phase 2 TransactionSubmitter)
+
+**Run:** 2026-03-21T19:00:24Z | **Chain:** 31337 (Anvil)
+
+This demonstrates the relayer's `TransactionSubmitter` submitting real `registerUsage()` transactions to the Diamond contract on Anvil — not the webhook mock. The script (`mailbox-relayer/scripts/prove-onchain-settlement.ts`) creates usage submissions matching Venice and Bankr metering output, then sends them through the same `TransactionSubmitter` code path used in production Phase 2 mode.
+
+**Setup:**
+- Diamond: `0xa513E6E4b8f2a923D98304ec87F64353C4D5C853`
+- Relayer: `0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266` (Anvil account 0)
+- Agreements 100 (Venice) and 101 (Bankr) seeded via `SeedAgreement.s.sol`
+
+**Settlement transactions (real Anvil tx hashes verified via `eth_getTransactionReceipt`):**
+
+| Provider | Agreement | Tx Hash | Block | Gas Used | Status |
+|----------|-----------|---------|-------|----------|--------|
+| Venice | 100 | `0xae0ffaec97c9c5b08c61868849b25af4025799132ee81e3ce8f0a8917f6e5bc8` | 87 | 188,567 | success |
+| Bankr | 101 | `0x30213593e71b710b8f0442a507cf4cc6213f5bf48fd3a3802549d00cdd656625` | 88 | 188,555 | success |
+
+**On-chain state after settlement:**
+- Agreement 100: `principalDrawn = 600875000000000000` (0.596235 VENICE_TEXT_TOKEN_IN @ 1e18 + 0.00232 VENICE_TEXT_TOKEN_OUT @ 2e18)
+- Agreement 101: `principalDrawn = 73000000000000000` (0.013 BANKR_TEXT_TOKEN_IN @ 1e18 + 0.030 BANKR_TEXT_TOKEN_OUT @ 2e18)
+
+Both transactions emitted `DrawExecuted` and `NativeEncumbranceUpdated` events. The tx hashes are standard 32-byte Keccak-256 hashes, not the `0xsettled-...` pattern from the webhook mock.
+
+**What this proves:** The relayer's settlement path can produce real on-chain transactions. The earlier lifecycle demos used the webhook mock for operational convenience, but the same `TransactionSubmitter` used in the integration test suite and this proof run submits genuine `registerUsage` calls to the chain.
+
+---
+
 ## What This Evidence Proves
 
 1. **Real provider integration** — Venice and Bankr both activated, served real inference calls, and returned metered usage that was aggregated and settled.
 2. **Deterministic metering pipeline** — 32 raw Venice usage rows were normalized into 2 unit types with content-addressable digest.
-3. **Settlement pipeline** — Metered submissions were settled via the relayer's webhook path (Venice/Bankr demos) and via real Anvil transactions (Pure Financing demo + relayer integration tests).
+3. **Settlement pipeline** — Metered submissions were settled via the relayer's webhook path (Venice/Bankr lifecycle demos) and via real Anvil transactions (Phase 2 settlement proof in Section 6, Pure Financing demo in Section 5, and relayer integration tests in Section 7).
 4. **Kill-switch enforcement** — On breach events, draws were frozen and provider resources (API keys, endpoints) were terminated.
 5. **Multi-provider architecture** — Four providers exercised across inference (Venice, Bankr) and compute (RunPod, Lambda) rails.
 6. **On-chain state machine** — Full Active → Delinquent → Defaulted lifecycle with interest accrual, grace periods, and cure period timing verified on Anvil. Both metered-usage (`registerUsage`) and direct-draw (`drawPrincipal`) modes are supported and tested.
@@ -169,7 +198,7 @@ This demonstrates the complete on-chain financing state machine with no external
 
 ---
 
-## 6. Test Results (2026-03-21)
+## 7. Test Results (2026-03-21)
 
 All tests pass across all three codebases.
 
@@ -223,3 +252,5 @@ Includes Anvil integration tests (`integration.anvil.test.ts`) with real on-chai
 | `LIFECYCLE-OUTPUTS-LAMBDA-RUNPOD.md` | Lambda + RunPod live evidence with error analysis |
 | `PURE-FINANCING-TIMEWARP-OUTPUTS.md` | On-chain Anvil timewarp lifecycle with tx hashes |
 | `RUNPOD-REAL-JOB-LOG.md` | Real RunPod job submission with health snapshot |
+| `mailbox-relayer/scripts/prove-onchain-settlement.ts` | Phase 2 settlement proof script (real Anvil `registerUsage` tx submission) |
+| `EqualFi/script/SeedAgreement.s.sol` | Forge script to seed active agreements on Anvil for settlement testing |
