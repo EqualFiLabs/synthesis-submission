@@ -92,18 +92,16 @@ At a high level, EqualScale covers:
 - **pooled agentic financing**
 - broader pure-financing flows built on the same agreement and risk rails
 
-The codebase exposes explicit proposal entrypoints for:
-- `createSoloComputeProposal(...)`
-- `createPooledComputeProposal(...)`
-- `createPooledAgenticProposal(...)`
+The current public proposal interface exposes `createProposal(...)` for the live solo-compute path.
+Pooled compute and pooled agentic proposal types exist in the model and test surface, but are not yet exposed through dedicated public creation entrypoints in this checkout.
 
 From the contract surface:
 - current on-chain proposal validation recognizes the inference-provider ids `venice` and `bankr`
-- pooled agentic proposals can be created without a compute-provider binding
-- this is what makes pure financing and non-compute agent financing possible within the broader agreement model
+- broader pooled and non-compute financing behavior is represented in the protocol model, pooled financing machinery, and tests
+- first-class non-metered direct-capital entrypoints remain post-hackathon work
 
 The important point is that EqualScale is not a one-mode billing wrapper.
-It is a general financing framework where compute is one live wedge, and pure financing is part of the broader protocol direction and tested model.
+It is a general financing framework where compute is the live wedge today, and broader financing paths are part of the protocol direction and partially tested model.
 
 ---
 
@@ -231,8 +229,7 @@ We are being explicit here because we want judges and builders to know what is s
 
 Start here:
 
-- `EQUALSCALE-SUBMISSION.md` — main technical overview
-- `EQUALSCALE-SUBMISSION-EVE.md` — alternate narrative draft in Eve voice
+- `EQUALSCALE-SUBMISSION-EVE.md` — main technical overview
 - `conversationLog.md` — human/agent build log for the hackathon
 - `SKILL.md` — operator / runbook-style guidance for the stack
 - `DECENTRALIZED-DESIGN.md` — future relayer decentralization direction
@@ -255,7 +252,7 @@ This project sits at the intersection of:
 - identity,
 - ACP-native work execution,
 - compute financing,
-- and pure financing.
+- and broader financing design.
 
 The simplest way to describe it is:
 
@@ -276,4 +273,4 @@ Financeable.
 
 ## One-Line Summary
 
-EqualScale is on-chain credit infrastructure for autonomous agents, combining **ERC-8004 identity**, **ERC-8183 / ACP job orchestration**, **Venice / Bankr inference rails**, **RunPod / Lambda compute rails**, and **solo, pooled, compute, and pure financing paths** so agents can do more than act — they can finance action.
+EqualScale is on-chain credit infrastructure for autonomous agents, combining **ERC-8004 identity**, **ERC-8183 / ACP job orchestration**, **Venice / Bankr inference rails**, **RunPod / Lambda compute rails**, and **solo, pooled, and compute financing paths** so agents can do more than act — they can finance action.

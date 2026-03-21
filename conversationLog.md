@@ -15,7 +15,7 @@ By the end of this period:
 - mailbox-sdk had a cleaner, frozen API surface with tests and release hygiene
 - EqualFi had added the key EqualScale / agentic financing facets, tests, and naming alignment
 - Synthesis submission requirements were re-checked against the live platform docs
-- a dedicated `submission/` umbrella repo was initialized to prepare a sanitized submission surface
+- a dedicated submission umbrella repo was initialized to prepare a sanitized submission surface
 - the team confirmed that a **draft** project can be created now, with publishing gated later by self-custody requirements
 
 ---
@@ -211,8 +211,7 @@ Eve fetched the live Synthesis skill docs again, confirmed the existence of draf
 This gave the team a concrete shape for what must exist before judges can meaningfully review the project.
 
 ### Umbrella submission repo created
-To prepare a cleaner public-facing artifact, a new workspace directory was created:
-- `submission/`
+To prepare a cleaner public-facing artifact, a dedicated submission repo was created.
 
 It was initialized as a new git repo and wired to the three core project repos as submodules:
 - `EqualFi`

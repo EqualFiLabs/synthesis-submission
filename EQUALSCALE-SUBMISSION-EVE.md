@@ -24,7 +24,7 @@ This is not a wrapper around an existing lending protocol. It is purpose-built i
 
 **EqualScale is not just compute financing.** Compute is one live and useful entrypoint, but the protocol is broader than compute. An agent can borrow for trades, services, deployments, asset acquisition, operating costs, or any other token-denominated need. The financing rails are general. Compute metering is one way of exercising them.
 
-**Judge note:** review the specs in `submission/` alongside this document. They are part of the core evidence for the project, not supplemental marketing. They capture the architecture, phased implementation plan, and constraint-driven build process that made it possible to execute a five-phase project coherently in roughly two days of hackathon work.
+**Judge note:** review the specs in `specs/` alongside this document. They are part of the core evidence for the project, not supplemental marketing. They capture the architecture, phased implementation plan, and constraint-driven build process that made it possible to execute a five-phase project coherently in roughly two days of hackathon work.
 
 ---
 
@@ -73,16 +73,14 @@ That means the full loop has been exercised:
 
 EqualScale is not limited to compute usage conversion.
 
-Its financing model supports general capital agreements where an agent borrows token-denominated capital for non-compute purposes and repays under the same bounded agreement framework. That broader financing surface is not a marketing extrapolation from compute demos. It is part of the protocol model and has been exercised in testing.
+Its financing model is designed to support general capital agreements where an agent borrows token-denominated capital for non-compute purposes and repays under the same bounded agreement framework. In this checkout, that broader financing surface is best understood as protocol direction plus partially exercised model/test coverage rather than a separate first-class public mode.
 
-### Proposal surface now matches the model
+### Proposal surface
 
-The on-chain proposal layer now exposes explicit entrypoints for:
-- `createSoloComputeProposal(...)`
-- `createPooledComputeProposal(...)`
-- `createPooledAgenticProposal(...)`
+The current on-chain proposal layer exposes `createProposal(...)` for the live solo-compute path.
+Pooled compute and pooled agentic proposal types exist in the protocol model and tests, but are not yet exposed through dedicated public proposal creation entrypoints in this checkout.
 
-That matters because the public surface now maps directly to the financing modes the protocol is actually designed to support.
+That matters because the architecture is broader than the currently exposed public entrypoints.
 
 ---
 
@@ -306,7 +304,7 @@ Lambda capacity availability can prevent a live run even when the integration pa
 That is acceptable for a hackathon proof of operation, but not the final form. The intended next step after the hackathon is relayer decentralization, with the planned architecture documented in `mailbox-relayer/DECENTRALIZED-DESIGN.md`.
 
 ### Compute remains the cleanest demo path, not the scope boundary
-Compute is the easiest path to inspect end to end because it naturally exercises provisioning, usage metering, debt registration, and termination. But the financing framework is broader than compute, and pure financing is part of the implemented and tested system surface.
+Compute is the easiest path to inspect end to end because it naturally exercises provisioning, usage metering, debt registration, and termination. The financing framework is broader than compute, but separate non-metered direct-capital paths remain additive work beyond the current live metered mode.
 
 ---
 
@@ -346,7 +344,7 @@ That is the bet behind EqualScale.
 ### Venice / Private Agents, Trusted Actions
 EqualScale fits this track by turning private or semi-private agent work into financeable activity under explicit rules. In the current system, Venice serves as an inference rail that can sit behind a bounded financing agreement, allowing an agent to consume paid inference without requiring an always-preloaded operator wallet.
 
-**DIEM Inference Lending Extension** — We have designed a dedicated inference-financing path for Venice's DIEM credit system. The full spec is in `submission/diem-inference-lending-spec.md`. The core thesis:
+**DIEM Inference Lending Extension** — We have designed a dedicated inference-financing path for Venice's DIEM credit system. The full spec is in `diem-inference-lending-spec.md`. The core thesis:
 
 - DIEM holders who are not using their full daily $1/DIEM allocation can deposit into a lending pool
 - Borrowers post USDC collateral and receive scoped Venice child API keys (not DIEM principal)
@@ -377,6 +375,5 @@ EqualScale fits the open track because it combines the full stack into one coher
 **Hackathon timing:** built during Synthesis after the hackathon opened on March 13, 2026  
 **Core contribution:** On-chain credit and settlement rails for autonomous agents  
 **Proven path:** Metered compute financing across multiple provider integrations, plus tested broader financing rails  
-**Review note:** judges should review the specs in `submission/` as part of the core evidence trail for how a five-phase project was designed and executed in roughly two days  
+**Review note:** judges should review the specs in `specs/` as part of the core evidence trail for how a five-phase project was designed and executed in roughly two days  
 **Long-term direction:** General-purpose financing agreements for autonomous agents with identity, bounded risk, encrypted delivery, and on-chain repayment history
-
