@@ -45,7 +45,7 @@ This is the strongest evidence path. It demonstrates the complete pipeline: acti
 }
 ```
 
-**Settlement:**
+**Settlement (webhook mock — see note below):**
 ```json
 {
   "status": "ok",
@@ -54,6 +54,8 @@ This is the strongest evidence path. It demonstrates the complete pipeline: acti
   "attempt": 1
 }
 ```
+
+> **Settlement mode note:** The Venice and Bankr demos used the relayer's webhook settlement path, which generates deterministic mock tx hashes (`0xsettled-{agreementId}-{timestamp}`). These hashes confirm the settlement pipeline executed end-to-end but are **not real on-chain transactions**. Real on-chain settlement is demonstrated separately in the relayer's Anvil integration tests (see Section 6) and the Pure Financing demo (Section 5), where `registerUsage` calls produce actual Anvil tx hashes verified via `eth_getTransactionReceipt`.
 
 **Risk Lifecycle:**
 - Breach event processed → draw frozen → Venice key terminated (`terminated: true`)
@@ -82,7 +84,7 @@ This is the strongest evidence path. It demonstrates the complete pipeline: acti
 - Final-pass metering on breach: 2 usage rows prepared
 - Submission ID: `1a7dbb4e-8ebd-499f-9ab2-f274f8117492`
 
-**Settlement:**
+**Settlement (webhook mock):**
 ```json
 {
   "processed": 1,
@@ -90,6 +92,7 @@ This is the strongest evidence path. It demonstrates the complete pipeline: acti
   "txHash": "0xsettled-177388974701-1773889762572"
 }
 ```
+> Same webhook settlement path as Venice — see settlement mode note in Section 1.
 
 ---
 
@@ -131,7 +134,7 @@ This demonstrates the Lambda adapter's error handling path. The activation failu
 
 **Run:** 2026-03-18T20:14:15Z | **Chain:** 31337 (Anvil)
 
-This demonstrates the complete on-chain financing state machine with no external provider dependencies.
+This demonstrates the complete on-chain financing state machine with no external provider dependencies. The demo uses `registerUsage` (metered-usage mode) to create debt, but the contracts also support `drawPrincipal` (direct-draw mode) for general capital draws without provider-metered usage routing — see `AgenticAgreementFacet.drawPrincipal()` and associated tests.
 
 **Setup:**
 - Diamond: `0xC9a43158891282A2B1475592D5719c001986Aaec`
@@ -158,10 +161,10 @@ This demonstrates the complete on-chain financing state machine with no external
 
 1. **Real provider integration** — Venice and Bankr both activated, served real inference calls, and returned metered usage that was aggregated and settled.
 2. **Deterministic metering pipeline** — 32 raw Venice usage rows were normalized into 2 unit types with content-addressable digest.
-3. **Settlement pipeline** — Metered submissions were settled with recorded tx hashes.
+3. **Settlement pipeline** — Metered submissions were settled via the relayer's webhook path (Venice/Bankr demos) and via real Anvil transactions (Pure Financing demo + relayer integration tests).
 4. **Kill-switch enforcement** — On breach events, draws were frozen and provider resources (API keys, endpoints) were terminated.
 5. **Multi-provider architecture** — Four providers exercised across inference (Venice, Bankr) and compute (RunPod, Lambda) rails.
-6. **On-chain state machine** — Full Active → Delinquent → Defaulted lifecycle with interest accrual, grace periods, and cure period timing verified on Anvil.
+6. **On-chain state machine** — Full Active → Delinquent → Defaulted lifecycle with interest accrual, grace periods, and cure period timing verified on Anvil. Both metered-usage (`registerUsage`) and direct-draw (`drawPrincipal`) modes are supported and tested.
 7. **Error handling** — Lambda capacity errors and RunPod job queueing were handled gracefully without crashing the relayer.
 
 ---
@@ -173,14 +176,14 @@ All tests pass across all three codebases.
 ### Solidity (forge test)
 
 ```
-Ran 155 test suites: 814 tests passed, 0 failed, 0 skipped
+Ran 155 test suites: 823 tests passed, 0 failed, 0 skipped
 ```
 
 Breakdown by category:
 
 | Category | Tests | Status |
 |----------|-------|--------|
-| Agentic unit + fuzz (18 facets) | 216 | All pass |
+| Agentic unit + fuzz (18 facets) | 225 | All pass |
 | Invariant (write-off, cross-cutting, cross-product) | 43 | All pass |
 | Differential (solo-vs-pooled, adapter portability) | 7 | All pass |
 | Stress (default cascade, gas profiling, high-volume, concurrent metering) | 8 | All pass |
