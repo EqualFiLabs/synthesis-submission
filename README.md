@@ -25,6 +25,104 @@ EqualScale combines:
 
 ---
 
+## Judge Quick-Start
+
+**If you have 5 minutes** — read `EQUALSCALE-SUBMISSION-EVE.md` (main technical overview) and `DEMO-EVIDENCE-CONSOLIDATED.md` (consolidated lifecycle evidence with real provider outputs).
+
+**If you have 15 minutes** — also read `PURE-FINANCING-TIMEWARP-OUTPUTS.md` (on-chain lifecycle from usage through default with real tx hashes) and `LIFECYCLE-OUTPUTS.md` (full Venice end-to-end with 32 metered usage rows).
+
+**If you want to verify the code** — the three codebases are:
+
+| Component | Path | Language | Lines | Tests |
+|-----------|------|----------|-------|-------|
+| EqualFi (on-chain) | `EqualFi/` | Solidity | ~4,300 (EqualScale facets) | 38 test files, ~12,600 lines |
+| Mailbox Relayer | `mailbox-relayer/` | TypeScript | ~9,900 | 40 test files, ~8,400 lines |
+| Mailbox SDK | `mailbox-sdk/` | TypeScript | ~120 | 1 test file, 9 tests |
+
+To run tests locally:
+```bash
+# SDK (fast, no native deps)
+cd mailbox-sdk && npx vitest run
+
+# Relayer (requires: pnpm approve-builds for native modules first)
+cd mailbox-relayer && pnpm test
+
+# Solidity (requires foundry, slow first build due to aave-v3 deps)
+cd EqualFi && forge test
+```
+
+---
+
+## Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        EqualScale Architecture                      │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────────────┐  │
+│  │  ERC-8004    │    │  ERC-8183    │    │   Governance         │  │
+│  │  Identity &  │    │  ACP Job     │    │   Proposals/Voting   │  │
+│  │  Reputation  │    │  Lifecycle   │    │   Circuit Breakers   │  │
+│  └──────┬───────┘    └──────┬───────┘    └──────────┬───────────┘  │
+│         │                   │                       │              │
+│  ┌──────▼───────────────────▼───────────────────────▼───────────┐  │
+│  │              EqualFi Diamond (EIP-2535)                       │  │
+│  │  ┌─────────────┐ ┌──────────────┐ ┌────────────────────────┐ │  │
+│  │  │  Proposal   │ │  Agreement   │ │   Risk Management      │ │  │
+│  │  │  & Approval │ │  Lifecycle   │ │   Delinquency/Default  │ │  │
+│  │  └─────────────┘ └──────────────┘ │   Write-Off/Recovery   │ │  │
+│  │  ┌─────────────┐ ┌──────────────┐ └────────────────────────┘ │  │
+│  │  │  Compute    │ │  Pooled      │ ┌────────────────────────┐ │  │
+│  │  │  Usage      │ │  Financing   │ │   Collateral Manager   │ │  │
+│  │  │  Metering   │ │  Pro-rata    │ │   Interest & Covenants │ │  │
+│  │  └──────┬──────┘ └──────────────┘ └────────────────────────┘ │  │
+│  └─────────┼────────────────────────────────────────────────────┘  │
+│            │                                                       │
+│  ┌─────────▼────────────────────────────────────────────────────┐  │
+│  │              Encrypted Mailbox (on-chain bytes)               │  │
+│  │         ECIES secp256k1 credential handoff channel            │  │
+│  └─────────┬────────────────────────────────────────────────────┘  │
+│            │                                                       │
+├────────────┼───────────────────────────────────────────────────────┤
+│  OFF-CHAIN │                                                       │
+│  ┌─────────▼────────────────────────────────────────────────────┐  │
+│  │                    Mailbox Relayer                            │  │
+│  │  Event Listener → Metering → Settlement → TX Submitter       │  │
+│  │  Kill-Switch enforcement    SQLite durable state (WAL)       │  │
+│  └─────────┬────────────────────────────────────────────────────┘  │
+│            │                                                       │
+│  ┌─────────▼────────────────────────────────────────────────────┐  │
+│  │                   Provider Adapters                           │  │
+│  │  ┌─────────┐  ┌────────┐  ┌─────────┐  ┌────────────────┐   │  │
+│  │  │ Venice  │  │ Bankr  │  │ RunPod  │  │    Lambda      │   │  │
+│  │  │ (infer) │  │(infer) │  │(compute)│  │   (compute)    │   │  │
+│  │  └─────────┘  └────────┘  └─────────┘  └────────────────┘   │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Pre-Existing vs Hackathon-Built Code
+
+EqualFi is an existing protocol codebase. The **EqualScale** module (all files under `src/equalscale/`, `src/libraries/LibAgenticStorage.sol`, and the corresponding test files under `test/agentic/`, `test/invariant/`, `test/differential/`, `test/stress/`, `test/security/`) was built during the hackathon window (March 13–18, 2026).
+
+The mailbox-relayer and mailbox-sdk are entirely new codebases built for this hackathon.
+
+| Component | Status | Evidence |
+|-----------|--------|---------|
+| `EqualFi/src/equalscale/` (18 facets, ~4,300 lines) | **Hackathon-built** | `conversationLog.md` traces day-by-day development |
+| `EqualFi/test/agentic/` + invariant/differential/stress/security (~12,600 lines) | **Hackathon-built** | Mirrors facet development timeline |
+| `mailbox-relayer/` (34 source files, ~9,900 lines) | **Hackathon-built** | Entirely new repo |
+| `mailbox-sdk/` (2 source files, ~120 lines) | **Hackathon-built** | Entirely new repo |
+| `EqualFi/` base (Diamond proxy, ERC infrastructure) | **Pre-existing** | Foundation the EqualScale module extends |
+| `specs/` design documents | **Hackathon-built** | Phase-by-phase design artifacts |
+
+See `conversationLog.md` for the full human-agent build log showing iterative development between Matt and Eve from March 13–18.
+
+---
+
 ## What We Built
 
 EqualScale is not a wrapper around an existing lending app. It is a dedicated financing layer for autonomous agents.
@@ -227,20 +325,26 @@ We are being explicit here because we want judges and builders to know what is s
 
 ## Repository Guide
 
-Start here:
+**Primary reading (for judges):**
+- `EQUALSCALE-SUBMISSION-EVE.md` — main technical overview of the submission
+- `DEMO-EVIDENCE-CONSOLIDATED.md` — consolidated lifecycle evidence with analysis
+- `conversationLog.md` — human/agent build log (Mar 13–18)
+- `PURE-FINANCING-TIMEWARP-OUTPUTS.md` — on-chain lifecycle with real tx hashes
 
-- `EQUALSCALE-SUBMISSION-EVE.md` — main technical overview
-- `conversationLog.md` — human/agent build log for the hackathon
-- `SKILL.md` — operator / runbook-style guidance for the stack
-- `DECENTRALIZED-DESIGN.md` — future relayer decentralization direction
-- `DEMO-EVIDENCE-CONSOLIDATED.md` — consolidated demo evidence
-- `ENTRYPOINT-DEPLOYMENT.md` — deployment notes
+**Implementation:**
+- `EqualFi/` — on-chain contracts (Diamond facets, tests, deployment scripts)
+- `mailbox-relayer/` — off-chain relayer, provider adapters, settlement pipeline
+- `mailbox-sdk/` — ECIES encrypted mailbox SDK
 
-Code and implementation directories:
-- `EqualFi/` — core contracts and deployment scripts
-- `mailbox-relayer/` — off-chain relayer and provider integrations
-- `mailbox-sdk/` — encrypted mailbox SDK
-- `specs/` — supporting specs and design docs
+**Operational reference (not required reading):**
+- `SKILL.md` — operator runbook for running the full stack locally
+- `ENTRYPOINT-DEPLOYMENT.md` — ERC-4337 local deployment guide
+- `LOCAL-DEPLOY.md` — local Anvil address reference
+
+**Directional / post-hackathon (no implementation in submission):**
+- `DECENTRALIZED-DESIGN.md` — future relayer decentralization design
+- `diem-inference-lending-spec.md` — DIEM inference lending extension spec
+- `specs/` — phase-by-phase design artifacts
 
 ---
 

@@ -1,9 +1,11 @@
 # EqualScale DIEM Inference Lending — Extension Specification
 
-**Status:** Draft v0.3  
-**Date:** 2026-03-20  
-**Extends:** `specs/agentic-financing-spec.md` (Canonical v1.3)  
-**Protocol:** Equalis (EqualFi)  
+> **Note for judges:** This is a post-hackathon design spec for a planned extension. There is no implementation code for this spec in the submission. It is included as directional context only.
+
+**Status:** Draft v0.3
+**Date:** 2026-03-20
+**Extends:** `specs/agentic-financing-spec.md` (Canonical v1.3)
+**Protocol:** Equalis (EqualFi)
 **Venue:** Venice.ai (Base)
 
 ---
