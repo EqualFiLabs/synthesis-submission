@@ -18,6 +18,7 @@ For full raw JSON, see the individual source files listed at the end.
 | Lambda Live | Lambda | error (insufficient capacity) | skipped | none | breach → close | Provider reached |
 | Pure Financing (Anvil) | N/A | N/A | registerUsage tx | N/A | Active → Delinquent → Defaulted | **Full on-chain lifecycle** |
 | Phase 2 Settlement Proof | Venice + Bankr | N/A | N/A | 2 real Anvil txs | N/A | **Real on-chain settlement** |
+| ERC-8183 ACP Lifecycle | N/A | N/A | N/A | N/A | 5 real Anvil txs | **Full ACP job lifecycle** |
 
 ---
 
@@ -186,6 +187,38 @@ Both transactions emitted `DrawExecuted` and `NativeEncumbranceUpdated` events. 
 
 ---
 
+## 8. ERC-8183 ACP Job Lifecycle (Anvil)
+
+**Run:** 2026-03-21T20:07:20Z | **Chain:** 31337 (Anvil)
+
+This demonstrates the full ERC-8183 Agentic Compute Protocol job lifecycle on-chain, exercising the `ERC8183Facet` with three distinct actors (borrower, provider, evaluator) and a `MockGeneric8183Adapter` authorized to call the Diamond.
+
+**Setup:**
+- Diamond: `0xa513E6E4b8f2a923D98304ec87F64353C4D5C853`
+- Agreement: 200 (ACP-enabled, seeded via `SeedACPAgreement.s.sol`)
+- Adapter: `MockGeneric8183Adapter` deployed and authorized (`setAuthorizedCaller(diamond, true)`)
+- Borrower: `0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266` (Anvil account 0)
+- Provider: `0x70997970C51812dc3A010C7d01b50e0d17dc79C8` (Anvil account 1)
+- Evaluator: `0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC` (Anvil account 2)
+
+**Job lifecycle transitions (real Anvil tx hashes):**
+
+| Step | Action | Actor | Tx Hash | Block | Gas | Status |
+|------|--------|-------|---------|-------|-----|--------|
+| 1 | `createAcpJob` | Borrower | `0xe0aa68e373f5b685c45e63e06d33cd7bc297a1589d4e65f028c70166d361ed8d` | 122 | 515,970 | success |
+| 2 | `setAcpBudget` | Provider | `0x092a84faded45030fc7bd0f2c2c631bc9bd4cdcd562619f5cd2267ee89a2ca49` | 123 | 116,990 | success |
+| 3 | `fundAcpJob` | Borrower | `0xd9e18ba40705bd6816eba8ab133bcd659cc8e17a767e06bd653127c1ebf13034` | 124 | 169,822 | success |
+| 4 | `submitAcpJob` | Provider | `0x450cf6063cf8cedfb0b21d9b77aa27ed0a3830b5c7ced1438a6889d74f8f99da` | 125 | 129,300 | success |
+| 5 | `completeAcpJob` | Evaluator | `0x3eb3eb087e7997cff2923755007f9642920f7cc6bc002a6cde99ce9a5caed5ee` | 126 | 183,002 | success |
+
+**Final on-chain state:**
+- Job: `terminalState = 1` (Completed), `budget = 100e18`
+- Agreement 200: `principalDrawn = 100e18` (drawn during `fundAcpJob`)
+
+**What this proves:** The ERC-8183 ACP facet supports a complete multi-actor job lifecycle — borrower creates and funds, provider sets budget and submits work, evaluator completes — with each transition enforcing role-based access control and drawing against the agreement's credit facility. The adapter authorization pattern (`onlyAuthorizedCaller`) ensures only the Diamond can invoke the adapter's callbacks.
+
+---
+
 ## What This Evidence Proves
 
 1. **Real provider integration** — Venice and Bankr both activated, served real inference calls, and returned metered usage that was aggregated and settled.
@@ -195,6 +228,7 @@ Both transactions emitted `DrawExecuted` and `NativeEncumbranceUpdated` events. 
 5. **Multi-provider architecture** — Four providers exercised across inference (Venice, Bankr) and compute (RunPod, Lambda) rails.
 6. **On-chain state machine** — Full Active → Delinquent → Defaulted lifecycle with interest accrual, grace periods, and cure period timing verified on Anvil. Both metered-usage (`registerUsage`) and direct-draw (`drawPrincipal`) modes are supported and tested.
 7. **Error handling** — Lambda capacity errors and RunPod job queueing were handled gracefully without crashing the relayer.
+8. **ERC-8183 ACP lifecycle** — Full multi-actor job lifecycle (create → budget → fund → submit → complete) with role-based access control, adapter authorization, and credit facility draws verified on Anvil with real tx hashes.
 
 ---
 
@@ -254,3 +288,5 @@ Includes Anvil integration tests (`integration.anvil.test.ts`) with real on-chai
 | `RUNPOD-REAL-JOB-LOG.md` | Real RunPod job submission with health snapshot |
 | `mailbox-relayer/scripts/prove-onchain-settlement.ts` | Phase 2 settlement proof script (real Anvil `registerUsage` tx submission) |
 | `EqualFi/script/SeedAgreement.s.sol` | Forge script to seed active agreements on Anvil for settlement testing |
+| `EqualFi/script/SeedACPAgreement.s.sol` | Forge script to deploy mock adapter and seed ACP-enabled agreement |
+| `scripts/demo-acp-lifecycle.sh` | ACP lifecycle demo script (3 actors, 5 transitions, real Anvil tx hashes) |
