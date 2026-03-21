@@ -1,235 +1,231 @@
 ---
 name: local-full-stack-lifecycle
-description: Clone dependencies, deploy full local EqualFi stack on Anvil (EntryPoint + ERC-8004 + ERC-6551 + Diamond), then run mailbox-relayer provider lifecycles with your own API keys.
+description: Deploy full local EqualFi stack on Anvil, run provider lifecycles, ACP job lifecycle, and on-chain settlement with real tx hashes.
 ---
 
 # Local Full-Stack Lifecycle Skill
 
-Use this skill when you need to spin up the full local stack from scratch and run Venice + Bankr flows with your own keys.
+Use this skill to spin up the full local stack from scratch and run Venice + Bankr provider flows, ERC-8183 ACP job lifecycle, and real on-chain settlement.
 
 ## What this covers
 
-1. Clone required external repos (`account-abstraction`, `erc-8004-contracts`, `erc6551/reference`)
-2. Start Anvil (`http://127.0.0.1:8545`, chain `31337`)
-3. Deploy contracts:
-- ERC-4337 EntryPoint v0.7 (resolve from `account-abstraction/deployments/dev/EntryPoint.json`)
-- ERC-8004 reference contracts
-- ERC-6551 canonical registry
-- EqualFi Diamond (`DeployV1.s.sol`)
-4. Start relayer against Anvil
-5. Run Venice + Bankr lifecycle flow and persist output
+1. Start Anvil
+2. Deploy contracts (two paths: full external deps or lightweight stubs)
+3. Seed agreements
+4. Start relayer (Phase 2 mode for real on-chain settlement)
+5. Run provider lifecycles (Venice, Bankr, Lambda, RunPod)
+6. Run ERC-8183 ACP job lifecycle
+7. Run pure financing default scenario
+8. Persist output
 
 ## Preconditions
 
-1. You are in `hackathon/`.
-2. Tools available: `git`, `node`, `npm`, `yarn`, `pnpm`, `forge`, `cast`, `jq`, `curl`, `anvil`.
-3. You have provider keys:
-- Venice admin key
-- Venice inference key
-- Bankr LLM key
-
-## Step 0: Clone Required Contract Repos
-
-This skill expects `EqualFi/`, `mailbox-relayer/`, and `mailbox-sdk/` in the current `hackathon/` directory.
-Only external dependencies (`account-abstraction`, `erc-8004-contracts`, `erc6551/reference`) are cloned to `./.deps` by default.
-
-```bash
-set -euo pipefail
-PROJECTS_DIR="${PROJECTS_DIR:-$(pwd)/.deps}"
-mkdir -p "$PROJECTS_DIR"
-
-[ -d "$PROJECTS_DIR/account-abstraction/.git" ] || git clone https://github.com/eth-infinitism/account-abstraction.git "$PROJECTS_DIR/account-abstraction"
-[ -d "$PROJECTS_DIR/erc-8004-contracts/.git" ] || git clone https://github.com/erc-8004/erc-8004-contracts.git "$PROJECTS_DIR/erc-8004-contracts"
-[ -d "$PROJECTS_DIR/reference/.git" ] || git clone https://github.com/erc6551/reference.git "$PROJECTS_DIR/reference"
-```
+1. You are in the submission root directory (contains `EqualFi/`, `mailbox-relayer/`, `mailbox-sdk/`, `scripts/`).
+2. Tools available: `git`, `node` (≥20), `pnpm`, `forge`, `cast`, `jq`, `curl`, `anvil`.
+3. Provider keys (optional per provider):
+   - `VENICE_ADMIN_API_KEY` + `VENICE_INFERENCE_API_KEY` — for Venice
+   - `BANKR_LLM_KEY` — for Bankr
+   - `LAMBDA_API_KEY` — for Lambda
+   - `RUNPOD_API_KEY` — for RunPod
 
 ## Step 1: Start Anvil
-
-Run in terminal A:
 
 ```bash
 anvil --host 127.0.0.1 --port 8545 --chain-id 31337 --accounts 10 --balance 10000
 ```
 
-Use default funded account/private key for local deploys:
-
-- Address: `0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266`
+Default deployer (Anvil account 0):
+- Address: `0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266`
 - Private key: `0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80`
 
-## Step 2: Deploy Local Contract Stack
+## Step 2: Deploy Contracts
 
-### 2.1 Deploy EntryPoint v0.7 + SimpleAccountFactory (manual flow)
+Two paths are available. Path A is lightweight and sufficient for all demos. Path B deploys the real external dependencies.
 
-Run from `hackathon/`:
+### Path A: Lightweight Stubs (recommended for demos)
+
+Set dummy bytecode at the three external dependency addresses so the Diamond deploy succeeds without cloning external repos:
 
 ```bash
 set -euo pipefail
-PROJECTS_DIR="${PROJECTS_DIR:-$(pwd)/.deps}"
-AA_DIR="$PROJECTS_DIR/account-abstraction"
-YARN_BIN="${YARN_BIN:-yarn}"
+RPC_URL=http://127.0.0.1:8545
 
-cd "$AA_DIR"
-git fetch origin releases/v0.7 --depth 1
-git checkout --detach origin/releases/v0.7
+# EntryPoint, IdentityRegistry, ERC6551Registry stubs
+cast rpc anvil_setCode 0x0000000000000000000000000000000000000001 0x00 --rpc-url $RPC_URL
+cast rpc anvil_setCode 0x0000000000000000000000000000000000000002 0x00 --rpc-url $RPC_URL
+cast rpc anvil_setCode 0x0000000000000000000000000000000000000003 0x00 --rpc-url $RPC_URL
+
+export ENTRYPOINT_ADDRESS=0x0000000000000000000000000000000000000001
+export IDENTITY_REGISTRY=0x0000000000000000000000000000000000000002
+export IDENTITY_REGISTRY_ADDRESS=0x0000000000000000000000000000000000000002
+export ERC6551_REGISTRY=0x0000000000000000000000000000000000000003
+export ERC6551_REGISTRY_ADDRESS=0x0000000000000000000000000000000000000003
+```
+
+### Path B: Full External Dependencies
+
+Clone and deploy the real contracts. Only needed if you want real EntryPoint/ERC-8004/ERC-6551 functionality.
+
+```bash
+set -euo pipefail
+DEPS_DIR="${DEPS_DIR:-$(pwd)/.deps}"
+mkdir -p "$DEPS_DIR"
+
+[ -d "$DEPS_DIR/account-abstraction/.git" ] || git clone https://github.com/eth-infinitism/account-abstraction.git "$DEPS_DIR/account-abstraction"
+[ -d "$DEPS_DIR/erc-8004-contracts/.git" ] || git clone https://github.com/erc-8004/erc-8004-contracts.git "$DEPS_DIR/erc-8004-contracts"
+[ -d "$DEPS_DIR/reference/.git" ] || git clone https://github.com/erc6551/reference.git "$DEPS_DIR/reference"
+```
+
+**EntryPoint v0.7:**
+```bash
+cd "$DEPS_DIR/account-abstraction"
+git fetch origin releases/v0.7 --depth 1 && git checkout --detach origin/releases/v0.7
 echo "test test test test test test test test test test test junk" > ./mnemonic.txt
-export MNEMONIC_FILE=./mnemonic.txt
-"$YARN_BIN" install
-"$YARN_BIN" deploy --network dev
-
-ENTRYPOINT_ADDRESS="$(jq -r '.address // empty' deployments/dev/EntryPoint.json)"
-if [ -z "$ENTRYPOINT_ADDRESS" ]; then
-  echo "failed to resolve ENTRYPOINT_ADDRESS from deployments/dev/EntryPoint.json" >&2
-  exit 1
-fi
-
-# must be non-zero bytecode at the deployed address
-if [ "$(cast code --rpc-url http://127.0.0.1:8545 "$ENTRYPOINT_ADDRESS")" = "0x" ]; then
-  echo "no bytecode at ENTRYPOINT_ADDRESS=$ENTRYPOINT_ADDRESS" >&2
-  exit 1
-fi
-
-echo "ENTRYPOINT_ADDRESS=$ENTRYPOINT_ADDRESS"
+MNEMONIC_FILE=./mnemonic.txt yarn install && yarn deploy --network dev
+export ENTRYPOINT_ADDRESS="$(jq -r '.address' deployments/dev/EntryPoint.json)"
 ```
 
-Set `ENTRYPOINT_ADDRESS` for `DeployV1.s.sol`:
-
+**ERC-8004:**
 ```bash
-export ENTRYPOINT_ADDRESS="$(jq -r '.address // empty' "$PROJECTS_DIR/account-abstraction/deployments/dev/EntryPoint.json")"
-```
-
-### 2.2 Deploy ERC-8004 reference contracts (manual flow)
-
-Run from `hackathon/`:
-
-```bash
-set -euo pipefail
-PROJECTS_DIR="${PROJECTS_DIR:-$(pwd)/.deps}"
-ERC8004_DIR="$PROJECTS_DIR/erc-8004-contracts"
-RPC_URL=http://127.0.0.1:8545
-
-cd "$ERC8004_DIR"
-# Hardhat 3 validates all configured networks; set these for local runs.
-export SEPOLIA_RPC_URL="${SEPOLIA_RPC_URL:-$RPC_URL}"
-export MAINNET_RPC_URL="${MAINNET_RPC_URL:-$RPC_URL}"
-
-npm run local:factory
-npm run local:deploy:vanity | tee /tmp/erc8004_local_deploy.log
-```
-
-Upgrade vanity proxies to latest implementations by impersonating ERC-8004 owner on Anvil:
-
-```bash
-set -euo pipefail
-RPC_URL=http://127.0.0.1:8545
-IDENTITY_PROXY=0x8004A818BFB912233c491871b3d84c89A494BD9e
-REPUTATION_PROXY=0x8004B663056A597Dffe9eCcC1965A193B7388713
-VALIDATION_PROXY=0x8004Cb1BF31DAf7788923b405b754f57acEB4272
-
-IDENTITY_IMPL="$(grep -E 'IdentityRegistry:[[:space:]]+0x[0-9a-fA-F]{40}$' /tmp/erc8004_local_deploy.log | tail -n1 | awk '{print $2}')"
-REPUTATION_IMPL="$(grep -E 'ReputationRegistry:[[:space:]]+0x[0-9a-fA-F]{40}$' /tmp/erc8004_local_deploy.log | tail -n1 | awk '{print $2}')"
-VALIDATION_IMPL="$(grep -E 'ValidationRegistry:[[:space:]]+0x[0-9a-fA-F]{40}$' /tmp/erc8004_local_deploy.log | tail -n1 | awk '{print $2}')"
-
-for value in "$IDENTITY_IMPL" "$REPUTATION_IMPL" "$VALIDATION_IMPL"; do
-  if ! [[ "$value" =~ ^0x[0-9a-fA-F]{40}$ ]]; then
-    echo "failed to parse implementation address from /tmp/erc8004_local_deploy.log" >&2
-    exit 1
-  fi
-done
-
-ERC8004_OWNER="$(cast call --rpc-url "$RPC_URL" "$IDENTITY_PROXY" "owner()(address)")"
-
-cast rpc --rpc-url "$RPC_URL" anvil_impersonateAccount "$ERC8004_OWNER" >/dev/null
-cast rpc --rpc-url "$RPC_URL" anvil_setBalance "$ERC8004_OWNER" "0x56BC75E2D63100000" >/dev/null
-
-cast send --rpc-url "$RPC_URL" --from "$ERC8004_OWNER" --unlocked \
-  "$IDENTITY_PROXY" "upgradeToAndCall(address,bytes)" "$IDENTITY_IMPL" "$(cast calldata "initialize()")"
-cast send --rpc-url "$RPC_URL" --from "$ERC8004_OWNER" --unlocked \
-  "$REPUTATION_PROXY" "upgradeToAndCall(address,bytes)" "$REPUTATION_IMPL" "$(cast calldata "initialize(address)" "$IDENTITY_PROXY")"
-cast send --rpc-url "$RPC_URL" --from "$ERC8004_OWNER" --unlocked \
-  "$VALIDATION_PROXY" "upgradeToAndCall(address,bytes)" "$VALIDATION_IMPL" "$(cast calldata "initialize(address)" "$IDENTITY_PROXY")"
-
-cast rpc --rpc-url "$RPC_URL" anvil_stopImpersonatingAccount "$ERC8004_OWNER" >/dev/null
-```
-
-Optional verification:
-
-```bash
-set -euo pipefail
-PROJECTS_DIR="${PROJECTS_DIR:-$(pwd)/.deps}"
-cd "$PROJECTS_DIR/erc-8004-contracts"
-npm run local:verify:vanity
-```
-
-Set `IDENTITY_REGISTRY` for `DeployV1.s.sol`:
-
-```bash
+cd "$DEPS_DIR/erc-8004-contracts"
+export SEPOLIA_RPC_URL=http://127.0.0.1:8545 MAINNET_RPC_URL=http://127.0.0.1:8545
+npm run local:factory && npm run local:deploy:vanity
 export IDENTITY_REGISTRY=0x8004A818BFB912233c491871b3d84c89A494BD9e
+export IDENTITY_REGISTRY_ADDRESS=$IDENTITY_REGISTRY
 ```
 
-### 2.3 Deploy ERC-6551 canonical registry (manual flow)
-
-Run from `hackathon/`:
-
+**ERC-6551:**
 ```bash
-set -euo pipefail
-PROJECTS_DIR="${PROJECTS_DIR:-$(pwd)/.deps}"
-REFERENCE_DIR="$PROJECTS_DIR/reference"
-RPC_URL=http://127.0.0.1:8545
-ANVIL_PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
-ERC6551_REGISTRY=0x000000006551c19487814612e58FE06813775758
-
-cd "$REFERENCE_DIR"
+cd "$DEPS_DIR/reference"
 git submodule update --init --recursive
-
-if [ "$(cast code --rpc-url "$RPC_URL" "$ERC6551_REGISTRY")" = "0x" ]; then
-  forge script script/DeployRegistry.s.sol:DeployRegistry \
-    --rpc-url "$RPC_URL" \
-    --broadcast \
-    --private-key "$ANVIL_PRIVATE_KEY"
-fi
-```
-
-Set `ERC6551_REGISTRY` for `DeployV1.s.sol`:
-
-```bash
+forge script script/DeployRegistry.s.sol:DeployRegistry \
+  --rpc-url http://127.0.0.1:8545 --broadcast \
+  --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 export ERC6551_REGISTRY=0x000000006551c19487814612e58FE06813775758
+export ERC6551_REGISTRY_ADDRESS=$ERC6551_REGISTRY
 ```
 
-### 2.4 Deploy EqualFi Diamond (must use DeployV1.s.sol)
+### Deploy EqualFi Diamond
 
-This step is required and must use `EqualFi/script/DeployV1.s.sol`.
-
-Run from `hackathon/EqualFi/`:
+The Diamond deploy requires three separate calls in order:
 
 ```bash
 set -euo pipefail
+cd EqualFi
+
 export RPC_URL=http://127.0.0.1:8545
-export OWNER=0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266
-export TIMELOCK=0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266
 export PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+export OWNER=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
+export TIMELOCK=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
+# ENTRYPOINT_ADDRESS, IDENTITY_REGISTRY, IDENTITY_REGISTRY_ADDRESS,
+# ERC6551_REGISTRY, ERC6551_REGISTRY_ADDRESS must be set from above.
 
-# from 2.1 / 2.2 / 2.3:
-# ENTRYPOINT_ADDRESS
-# IDENTITY_REGISTRY
-# ERC6551_REGISTRY
+# 1. Deploy base Diamond + core facets
+forge script script/DeployV1.s.sol --sig "runBase()" \
+  --rpc-url $RPC_URL --private-key $PRIVATE_KEY --broadcast --skip-simulation
 
-forge script script/DeployV1.s.sol:DeployV1Script \
-  --sig "runDeployV1()" \
-  --rpc-url "$RPC_URL" \
-  --broadcast \
-  --skip-simulation
+# Extract Diamond address
+export DIAMOND_ADDRESS=$(jq -r '.transactions[] | select(.contractName=="Diamond" and .transactionType=="CREATE") | .contractAddress' \
+  broadcast/DeployV1.s.sol/31337/runBase-latest.json | tail -n 1)
+export DIAMOND=$DIAMOND_ADDRESS
+export POSITION_NFT=$(jq -r '.transactions[] | select(.contractName=="PositionNFT" and .transactionType=="CREATE") | .contractAddress' \
+  broadcast/DeployV1.s.sol/31337/runBase-latest.json | tail -n 1)
+
+echo "DIAMOND_ADDRESS=$DIAMOND_ADDRESS"
+echo "POSITION_NFT=$POSITION_NFT"
+
+# 2. Install V1 facets (lending, pools, views, agent wallet)
+forge script script/DeployV1.s.sol --sig "runDeployV1()" \
+  --rpc-url $RPC_URL --private-key $PRIVATE_KEY --broadcast --skip-simulation
+
+# 3. Install agentic facets (EqualScale: metering, risk, ACP/ERC-8183)
+export DIAMOND_ADDRESS=$DIAMOND_ADDRESS
+forge script script/DeployV1.s.sol --sig "runInstallAgenticOnExistingDiamond()" \
+  --rpc-url $RPC_URL --private-key $PRIVATE_KEY --broadcast --skip-simulation
 ```
 
-Extract the deployed Diamond address:
+## Step 3: Seed Agreements
+
+### Metered-usage agreements (for provider lifecycles + settlement)
 
 ```bash
-jq -r '.transactions[] | select(.contractName=="Diamond" and .transactionType=="CREATE") | .contractAddress' \
-  broadcast/DeployV1.s.sol/31337/runDeployV1-latest.json | tail -n 1
+cd EqualFi
+export RPC_URL=http://127.0.0.1:8545
+export PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+# DIAMOND_ADDRESS must be set from Step 2
+
+forge script script/SeedAgreement.s.sol --tc SeedAgreementScript \
+  --rpc-url $RPC_URL --private-key $PRIVATE_KEY --broadcast --skip-simulation
 ```
 
-Save that as `DIAMOND_ADDRESS` for relayer startup.
+This seeds agreements 100, 101, 102 with metered-usage mode, credit limits, and unit pricing.
 
-## Step 3: Set Provider Keys (optional per provider)
+### ACP-enabled agreement (for ERC-8183 lifecycle)
+
+```bash
+forge script script/SeedACPAgreement.s.sol --tc SeedACPAgreementScript \
+  --rpc-url $RPC_URL --private-key $PRIVATE_KEY --broadcast --skip-simulation
+```
+
+This seeds agreement 200 with ACP mode enabled, deploys a `MockGeneric8183Adapter`, and authorizes the Diamond as a caller on the adapter.
+
+## Step 4: Build and Start Relayer
+
+**Important:** The relayer must be built before running. Using `pnpm dev` (tsx) fails because `better-sqlite3`'s native module doesn't resolve correctly through pnpm's symlinked `.pnpm` store under tsx. Build first, then run with `node`.
+
+```bash
+cd mailbox-relayer
+pnpm install
+pnpm build   # produces dist/index.js via tsup
+```
+
+### Phase 2 mode (real on-chain settlement — recommended)
+
+When `RPC_URL`, `DIAMOND_ADDRESS`, `CHAIN_ID`, and `RELAYER_PRIVATE_KEY` are all set, the relayer starts in Phase 2 mode. This wires `TransactionSubmitter` as the `UsageSettlementSender`, so `POST /settlement/run` submits real `registerUsage()` transactions on-chain instead of using the webhook mock.
+
+```bash
+set -a
+source .env  # if you have a .env with provider keys
+set +a
+
+export VENICE_API_KEY="${VENICE_ADMIN_API_KEY:-}"
+export BANKR_LLM_KEY="${BANKR_LLM_KEY:-}"
+export RPC_URL=http://127.0.0.1:8545
+export CHAIN_ID=31337
+export DIAMOND_ADDRESS="<from Step 2>"
+export RELAYER_PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+export ADMIN_AUTH_TOKEN="local-admin-token"
+export PORT=3113
+export HOST=127.0.0.1
+export RELAYER_DB_PATH="/tmp/mailbox-relayer.sqlite"
+export METERING_ENABLED=false
+export KILLSWITCH_RETRY_ENABLED=false
+export USAGE_SETTLEMENT_ENABLED=false
+export COVENANT_MONITOR_ENABLED=false
+export INTEREST_ACCRUAL_ENABLED=false
+
+node dist/index.js
+```
+
+Verify: `curl -sS http://127.0.0.1:3113/health` → `{"ok":true}`
+
+Startup log should show: `{ walletAddress: '0xf39Fd6...' } phase2 signer configured`
+
+### Webhook mock mode (alternative, no on-chain txs)
+
+If you omit `RPC_URL`/`DIAMOND_ADDRESS`/`CHAIN_ID`/`RELAYER_PRIVATE_KEY`, the relayer falls back to webhook settlement. Start a mock webhook first:
+
+```bash
+node -e 'const http=require("http");http.createServer((req,res)=>{let b="";req.on("data",c=>b+=c);req.on("end",()=>{let a="unknown";try{a=JSON.parse(b).submission.agreementId||a}catch{}res.writeHead(200,{"content-type":"application/json"});res.end(JSON.stringify({ok:true,txHash:"0xsettled-"+a+"-"+Date.now()}))})}).listen(3213,"127.0.0.1",()=>console.log("mock on :3213"))'
+```
+
+Then add to relayer env:
+```bash
+export USAGE_SETTLEMENT_WEBHOOK_URL="http://127.0.0.1:3213/settle"
+export USAGE_SETTLEMENT_WEBHOOK_TOKEN="local-settlement-token"
+```
+
+## Step 5: Set Provider Keys + Detect Available Lifecycles
 
 ```bash
 # Venice
@@ -239,32 +235,17 @@ export VENICE_INFERENCE_API_KEY="..."
 # Bankr
 export BANKR_LLM_KEY="..."
 
-# Lambda
+# Lambda (optional)
 export LAMBDA_API_KEY="..."
 export LAMBDA_BASE_URL="${LAMBDA_BASE_URL:-https://cloud.lambdalabs.com/api/v1}"
 
-# RunPod
+# RunPod (optional)
 export RUNPOD_API_KEY="..."
 export RUNPOD_SERVERLESS_BASE_URL="${RUNPOD_SERVERLESS_BASE_URL:-https://api.runpod.ai/v2}"
 export RUNPOD_INFRA_BASE_URL="${RUNPOD_INFRA_BASE_URL:-https://rest.runpod.io/v1}"
 ```
 
-## Step 3.1: Detect Available Keys + Ask Which Lifecycles to Run
-
-If running this as an agent, **ask the user which lifecycles to run** from:
-- `bankr`
-- `venice`
-- `lambda`
-- `runpod`
-
-Then set:
-
-```bash
-# comma-separated list, e.g. "venice,bankr" or "lambda,runpod"
-export LIFECYCLES="venice,bankr"
-```
-
-If `LIFECYCLES` is unset, default to all providers with detected keys:
+Detect which lifecycles to run:
 
 ```bash
 AVAILABLE=()
@@ -272,84 +253,33 @@ if [ -n "${VENICE_ADMIN_API_KEY:-}" ] && [ -n "${VENICE_INFERENCE_API_KEY:-}" ];
 if [ -n "${BANKR_LLM_KEY:-}" ]; then AVAILABLE+=("bankr"); fi
 if [ -n "${LAMBDA_API_KEY:-}" ]; then AVAILABLE+=("lambda"); fi
 if [ -n "${RUNPOD_API_KEY:-}" ]; then AVAILABLE+=("runpod"); fi
-echo "Detected lifecycle providers: ${AVAILABLE[*]:-none}"
+LIFECYCLES="${LIFECYCLES:-$(IFS=,; echo "${AVAILABLE[*]}")}"
+echo "Running lifecycles: $LIFECYCLES"
 ```
 
-## Step 4: Start Settlement Mock Webhook
+**Provider key mapping for relayer:**
+| Provider | Relayer env var | Notes |
+|----------|----------------|-------|
+| Venice | `VENICE_API_KEY` (= `VENICE_ADMIN_API_KEY`) | Also needs `VENICE_INFERENCE_API_KEY` for usage seed inference call |
+| Bankr | `BANKR_LLM_KEY` | Same key for activation + usage |
+| Lambda | `LAMBDA_API_KEY` | Same key |
+| RunPod | `RUNPOD_API_KEY` | Same key |
 
-Run in terminal B:
+## Step 6: Run Provider Lifecycles (Venice/Bankr/Lambda/RunPod)
 
-```bash
-node -e 'const http=require("http");const port=3213;const token="local-settlement-token";const server=http.createServer((req,res)=>{let body="";req.on("data",c=>body+=c);req.on("end",()=>{if(req.method!=="POST"){res.writeHead(405,{"content-type":"application/json"});return res.end(JSON.stringify({error:"method_not_allowed"}));}if(req.url!=="/settle"){res.writeHead(404,{"content-type":"application/json"});return res.end(JSON.stringify({error:"not_found"}));}if(req.headers.authorization!=="Bearer "+token){res.writeHead(401,{"content-type":"application/json"});return res.end(JSON.stringify({error:"unauthorized"}));}let agreement="unknown";try{const parsed=JSON.parse(body||"{}");agreement=(parsed&&parsed.submission&&parsed.submission.agreementId)||"unknown";}catch{}res.writeHead(200,{"content-type":"application/json"});res.end(JSON.stringify({ok:true,txHash:"0xsettled-"+agreement+"-"+Date.now()}));});});server.listen(port,"127.0.0.1",()=>console.log("settlement mock listening on http://127.0.0.1:"+port+"/settle"));'
-```
-
-## Step 5: Start Relayer Against Anvil
-
-Run in terminal C:
-
-```bash
-export VENICE_API_KEY="$VENICE_ADMIN_API_KEY"
-export BANKR_LLM_KEY="${BANKR_LLM_KEY:-}"
-export LAMBDA_API_KEY="${LAMBDA_API_KEY:-}"
-export RUNPOD_API_KEY="${RUNPOD_API_KEY:-}"
-export VENICE_BASE_URL="https://api.venice.ai/api/v1"
-export BANKR_LLM_BASE_URL="https://llm.bankr.bot"
-export BANKR_USAGE_PATH="/v1/usage"
-export LAMBDA_BASE_URL="${LAMBDA_BASE_URL:-https://cloud.lambdalabs.com/api/v1}"
-export RUNPOD_SERVERLESS_BASE_URL="${RUNPOD_SERVERLESS_BASE_URL:-https://api.runpod.ai/v2}"
-export RUNPOD_INFRA_BASE_URL="${RUNPOD_INFRA_BASE_URL:-https://rest.runpod.io/v1}"
-
-export ADMIN_AUTH_TOKEN="local-admin-token"
-export USAGE_SETTLEMENT_WEBHOOK_URL="http://127.0.0.1:3213/settle"
-export USAGE_SETTLEMENT_WEBHOOK_TOKEN="local-settlement-token"
-
-export RPC_URL="http://127.0.0.1:8545"
-export CHAIN_ID="31337"
-export DIAMOND_ADDRESS="<paste_diamond_address>"
-export RELAYER_PRIVATE_KEY="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
-
-export PORT="3113"
-export HOST="127.0.0.1"
-export RELAYER_DB_PATH="/tmp/mailbox-relayer-provider-lifecycles.sqlite"
-
-export METERING_ENABLED="false"
-export KILLSWITCH_RETRY_ENABLED="false"
-export USAGE_SETTLEMENT_ENABLED="false"
-export COVENANT_MONITOR_ENABLED="false"
-export INTEREST_ACCRUAL_ENABLED="false"
-
-pnpm --dir mailbox-relayer dev
-```
-
-## Step 6: Run Selected Provider Lifecycles (Bankr/Venice/Lambda/RunPod)
-
-Run in terminal D:
+This script drives the full lifecycle for each selected provider: activation → inference seed → metering → settlement → breach → close.
 
 ```bash
 set -euo pipefail
 BASE="http://127.0.0.1:3113"
 AUTH="Authorization: Bearer local-admin-token"
-BORROWER_ADDRESS="${BORROWER_ADDRESS:-0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266}"
+BORROWER_ADDRESS="${BORROWER_ADDRESS:-0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266}"
 LAMBDA_INSTANCE_TYPE="${LAMBDA_INSTANCE_TYPE:-a10_24gb}"
-
-available=()
-if [ -n "${VENICE_ADMIN_API_KEY:-}" ] && [ -n "${VENICE_INFERENCE_API_KEY:-}" ]; then available+=("venice"); fi
-if [ -n "${BANKR_LLM_KEY:-}" ]; then available+=("bankr"); fi
-if [ -n "${LAMBDA_API_KEY:-}" ]; then available+=("lambda"); fi
-if [ -n "${RUNPOD_API_KEY:-}" ]; then available+=("runpod"); fi
-
-if [ -z "${LIFECYCLES:-}" ]; then
-  if [ "${#available[@]}" -gt 0 ]; then
-    LIFECYCLES="$(IFS=,; echo "${available[*]}")"
-  else
-    LIFECYCLES=""
-  fi
-fi
 
 selected_csv="$(echo "${LIFECYCLES:-}" | tr '[:upper:]' '[:lower:]' | tr -d ' ')"
 IFS=',' read -r -a selected <<< "$selected_csv"
 
-# If Lambda is selected and no SSH pubkey is supplied, generate a local temporary one.
+# If Lambda is selected and no SSH pubkey is supplied, generate a temporary one.
 if [[ ",$selected_csv," == *",lambda,"* ]] && [ -z "${LAMBDA_SSH_PUBLIC_KEY:-}" ]; then
   if command -v ssh-keygen >/dev/null 2>&1; then
     if [ ! -f /tmp/equalfi_lambda_lifecycle_ed25519 ]; then
@@ -403,14 +333,22 @@ JSON
 JSON
 )
 
+  # Activation
   curl -sS -X POST "$BASE/events/onchain" -H "$AUTH" -H 'content-type: application/json' -d "$activation_payload" > "/tmp/${provider}_activation.json"
+
+  # Metering
   curl -sS -X POST "$BASE/metering/run" -H "$AUTH" -H 'content-type: application/json' -d "{\"agreementId\":\"$aid\"}" > "/tmp/${provider}_metering.json"
   curl -sS "$BASE/metering/submissions?limit=50" | jq --arg aid "$aid" '{submissions:[.submissions[] | select(.agreementId==$aid)]}' > "/tmp/${provider}_submissions.json"
+
+  # Settlement
   curl -sS -X POST "$BASE/settlement/run" -H "$AUTH" -H 'content-type: application/json' -d "{}" > "/tmp/${provider}_settlement_before_breach.json"
+
+  # Breach + close
   curl -sS -X POST "$BASE/events/onchain" -H "$AUTH" -H 'content-type: application/json' -d "$breach_payload" > "/tmp/${provider}_breach.json"
   curl -sS -X POST "$BASE/events/onchain" -H "$AUTH" -H 'content-type: application/json' -d "$close_payload" > "/tmp/${provider}_close.json"
   curl -sS "$BASE/agreements/$aid/state" > "/tmp/${provider}_state.json"
 
+  # Collect into combined JSON
   jq --arg p "$provider" --arg aid "$aid" \
     --slurpfile activation "/tmp/${provider}_activation.json" \
     --slurpfile metering "/tmp/${provider}_metering.json" \
@@ -432,6 +370,7 @@ JSON
   mv /tmp/provider_sections.next.json /tmp/provider_sections.json
 }
 
+# Seed inference calls so providers have usage to meter
 if [ -n "${VENICE_INFERENCE_API_KEY:-}" ]; then
   VENICE_MODEL="$(curl -sS https://api.venice.ai/api/v1/models -H "Authorization: Bearer ${VENICE_INFERENCE_API_KEY}" -H 'content-type: application/json' | jq -r '.data[0].id // .models[0].id // empty')"
   if [ -n "$VENICE_MODEL" ]; then
@@ -452,44 +391,17 @@ fi
 
 sleep 2
 
+# Run each selected provider
 BASE_AID="$(date +%s)"
 idx=0
 for provider in "${selected[@]}"; do
   [ -n "$provider" ] || continue
   case "$provider" in
-    venice)
-      [ -n "${VENICE_ADMIN_API_KEY:-}" ] && [ -n "${VENICE_INFERENCE_API_KEY:-}" ] || {
-        jq --arg p "$provider" '. + {($p): {skipped:true, reason:"missing_keys"}}' /tmp/provider_sections.json > /tmp/provider_sections.next.json
-        mv /tmp/provider_sections.next.json /tmp/provider_sections.json
-        continue
-      }
-      ;;
-    bankr)
-      [ -n "${BANKR_LLM_KEY:-}" ] || {
-        jq --arg p "$provider" '. + {($p): {skipped:true, reason:"missing_keys"}}' /tmp/provider_sections.json > /tmp/provider_sections.next.json
-        mv /tmp/provider_sections.next.json /tmp/provider_sections.json
-        continue
-      }
-      ;;
-    lambda)
-      [ -n "${LAMBDA_API_KEY:-}" ] || {
-        jq --arg p "$provider" '. + {($p): {skipped:true, reason:"missing_keys"}}' /tmp/provider_sections.json > /tmp/provider_sections.next.json
-        mv /tmp/provider_sections.next.json /tmp/provider_sections.json
-        continue
-      }
-      ;;
-    runpod)
-      [ -n "${RUNPOD_API_KEY:-}" ] || {
-        jq --arg p "$provider" '. + {($p): {skipped:true, reason:"missing_keys"}}' /tmp/provider_sections.json > /tmp/provider_sections.next.json
-        mv /tmp/provider_sections.next.json /tmp/provider_sections.json
-        continue
-      }
-      ;;
-    *)
-      jq --arg p "$provider" '. + {($p): {skipped:true, reason:"unknown_provider"}}' /tmp/provider_sections.json > /tmp/provider_sections.next.json
-      mv /tmp/provider_sections.next.json /tmp/provider_sections.json
-      continue
-      ;;
+    venice)  [ -n "${VENICE_ADMIN_API_KEY:-}" ] && [ -n "${VENICE_INFERENCE_API_KEY:-}" ] || { echo "skipping venice: missing keys"; continue; } ;;
+    bankr)   [ -n "${BANKR_LLM_KEY:-}" ] || { echo "skipping bankr: missing keys"; continue; } ;;
+    lambda)  [ -n "${LAMBDA_API_KEY:-}" ] || { echo "skipping lambda: missing keys"; continue; } ;;
+    runpod)  [ -n "${RUNPOD_API_KEY:-}" ] || { echo "skipping runpod: missing keys"; continue; } ;;
+    *)       echo "unknown provider: $provider"; continue ;;
   esac
 
   aid="$((BASE_AID + idx + 1))"
@@ -498,6 +410,7 @@ for provider in "${selected[@]}"; do
   idx=$((idx + 1))
 done
 
+# Final settlement pass + collect all outputs
 curl -sS -X POST "$BASE/settlement/run" -H "$AUTH" -H 'content-type: application/json' -d "{}" > /tmp/post_breach_settlement.json
 curl -sS "$BASE/metering/submissions?limit=100" > /tmp/all_submissions.json
 curl -sS "$BASE/settlement/attempts?limit=100" > /tmp/all_attempts.json
@@ -520,106 +433,74 @@ jq -n \
 cat /tmp/provider_lifecycles.json
 ```
 
-## Step 7: Always Run Pure Financing Default Scenario (No API Keys)
+## Step 7: Run ERC-8183 ACP Job Lifecycle
 
-This step should always run, even if no provider lifecycle is selected.
+This exercises the full multi-actor ACP job lifecycle with 3 Anvil accounts:
+
+```bash
+export DIAMOND_ADDRESS="<from Step 2>"
+export RPC_URL=http://127.0.0.1:8545
+export PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+
+bash scripts/demo-acp-lifecycle.sh
+```
+
+This runs 5 on-chain transitions with real tx hashes:
+1. `createAcpJob` — Borrower creates job on agreement 200
+2. `setAcpBudget` — Provider sets budget (100e18)
+3. `fundAcpJob` — Borrower funds, drawing against credit facility
+4. `submitAcpJob` — Provider submits work product hash
+5. `completeAcpJob` — Evaluator marks job complete
+
+Actors:
+- Borrower: `0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266` (account 0)
+- Provider: `0x70997970C51812dc3A010C7d01b50e0d17dc79C8` (account 1)
+- Evaluator: `0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC` (account 2)
+
+## Step 8: Run Pure Financing Default Scenario (No API Keys)
+
+This always works — no provider keys needed. Exercises the on-chain state machine: Active → Delinquent → Defaulted via Anvil time warps.
 
 ```bash
 set -euo pipefail
-RPC_URL="${RPC_URL:-http://127.0.0.1:8545}"
-PURE_FINANCING_AGREEMENT_ID="${PURE_FINANCING_AGREEMENT_ID:-1}"
-PURE_FINANCING_USAGE_AMOUNT_WEI="${PURE_FINANCING_USAGE_AMOUNT_WEI:-400000000000000000000}" # 400e18
-PURE_FINANCING_UNIT_TYPE="${PURE_FINANCING_UNIT_TYPE:-$(cast keccak "VENICE_TEXT_TOKEN_IN")}"
-PURE_FINANCING_OWNER_PRIVATE_KEY="${PURE_FINANCING_OWNER_PRIVATE_KEY:-0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80}"
-PURE_FINANCING_RELAYER_PRIVATE_KEY="${PURE_FINANCING_RELAYER_PRIVATE_KEY:-0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80}"
+RPC_URL=http://127.0.0.1:8545
+PK=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+AID=1
+UNIT_TYPE=$(cast keccak "VENICE_TEXT_TOKEN_IN")
+# DIAMOND_ADDRESS must be set
 
-: "${DIAMOND_ADDRESS:?DIAMOND_ADDRESS must be set from Step 2.4}"
+# Register usage (creates debt)
+cast send --rpc-url $RPC_URL --private-key $PK \
+  $DIAMOND_ADDRESS "registerUsage(uint256,bytes32,uint256)" $AID $UNIT_TYPE 400000000000000000000
 
-mkdir -p /tmp/pure-finance
-RELAYER_ADDRESS="$(cast wallet address --private-key "$PURE_FINANCING_RELAYER_PRIVATE_KEY")"
+# Day 1: accrue interest
+cast rpc --rpc-url $RPC_URL anvil_increaseTime 86400 && cast rpc --rpc-url $RPC_URL evm_mine
+cast send --rpc-url $RPC_URL --private-key $PK $DIAMOND_ADDRESS "accrueInterest(uint256)" $AID
 
-# Ensure relayer role (idempotent if already granted)
-cast send --rpc-url "$RPC_URL" --private-key "$PURE_FINANCING_OWNER_PRIVATE_KEY" \
-  "$DIAMOND_ADDRESS" "grantRelayerRole(address)" "$RELAYER_ADDRESS" >/tmp/pure-finance/grant-relayer.txt 2>/dev/null || true
+# Day 3: delinquency
+cast rpc --rpc-url $RPC_URL anvil_increaseTime 172801 && cast rpc --rpc-url $RPC_URL evm_mine
+cast send --rpc-url $RPC_URL --private-key $PK $DIAMOND_ADDRESS "detectDelinquency(uint256)" $AID
 
-if REGISTER_JSON="$(cast send --rpc-url "$RPC_URL" --private-key "$PURE_FINANCING_RELAYER_PRIVATE_KEY" --json \
-  "$DIAMOND_ADDRESS" "registerUsage(uint256,bytes32,uint256)" \
-  "$PURE_FINANCING_AGREEMENT_ID" "$PURE_FINANCING_UNIT_TYPE" "$PURE_FINANCING_USAGE_AMOUNT_WEI" 2>/tmp/pure-finance/register-usage.err)"; then
-
-  REGISTER_TX="$(echo "$REGISTER_JSON" | jq -r '.transactionHash // empty')"
-  cast call --rpc-url "$RPC_URL" "$DIAMOND_ADDRESS" \
-    "getAgreement(uint256)((uint256,uint256,string,uint256,uint256,bytes32,address,uint8,uint8,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,address,bytes32))" \
-    "$PURE_FINANCING_AGREEMENT_ID" > /tmp/pure-finance/agreement_after_usage.txt
-
-  cast rpc --rpc-url "$RPC_URL" anvil_increaseTime 86400 >/dev/null
-  cast rpc --rpc-url "$RPC_URL" evm_mine >/dev/null
-  ACCRUE_TX="$(cast send --rpc-url "$RPC_URL" --private-key "$PURE_FINANCING_OWNER_PRIVATE_KEY" --json \
-    "$DIAMOND_ADDRESS" "accrueInterest(uint256)" "$PURE_FINANCING_AGREEMENT_ID" | jq -r '.transactionHash // empty')"
-  cast call --rpc-url "$RPC_URL" "$DIAMOND_ADDRESS" \
-    "getAgreement(uint256)((uint256,uint256,string,uint256,uint256,bytes32,address,uint8,uint8,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,address,bytes32))" \
-    "$PURE_FINANCING_AGREEMENT_ID" > /tmp/pure-finance/agreement_after_day1_accrual.txt
-
-  cast rpc --rpc-url "$RPC_URL" anvil_increaseTime 172801 >/dev/null
-  cast rpc --rpc-url "$RPC_URL" evm_mine >/dev/null
-  DELINQUENCY_TX="$(cast send --rpc-url "$RPC_URL" --private-key "$PURE_FINANCING_OWNER_PRIVATE_KEY" --json \
-    "$DIAMOND_ADDRESS" "detectDelinquency(uint256)" "$PURE_FINANCING_AGREEMENT_ID" | jq -r '.transactionHash // empty')"
-  cast call --rpc-url "$RPC_URL" "$DIAMOND_ADDRESS" \
-    "getAgreement(uint256)((uint256,uint256,string,uint256,uint256,bytes32,address,uint8,uint8,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,address,bytes32))" \
-    "$PURE_FINANCING_AGREEMENT_ID" > /tmp/pure-finance/agreement_after_delinquency.txt
-
-  cast rpc --rpc-url "$RPC_URL" anvil_increaseTime 259201 >/dev/null
-  cast rpc --rpc-url "$RPC_URL" evm_mine >/dev/null
-  DEFAULT_TX="$(cast send --rpc-url "$RPC_URL" --private-key "$PURE_FINANCING_OWNER_PRIVATE_KEY" --json \
-    "$DIAMOND_ADDRESS" "triggerDefault(uint256)" "$PURE_FINANCING_AGREEMENT_ID" | jq -r '.transactionHash // empty')"
-  cast call --rpc-url "$RPC_URL" "$DIAMOND_ADDRESS" \
-    "getAgreement(uint256)((uint256,uint256,string,uint256,uint256,bytes32,address,uint8,uint8,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,address,bytes32))" \
-    "$PURE_FINANCING_AGREEMENT_ID" > /tmp/pure-finance/agreement_after_default.txt
-
-  jq -n \
-    --arg runAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    --arg agreementId "$PURE_FINANCING_AGREEMENT_ID" \
-    --arg registerTx "$REGISTER_TX" \
-    --arg accrueTx "$ACCRUE_TX" \
-    --arg detectDelinquencyTx "$DELINQUENCY_TX" \
-    --arg triggerDefaultTx "$DEFAULT_TX" \
-    '{
-      runAt: $runAt,
-      mode: "anvil_timewarp",
-      agreementId: $agreementId,
-      registerUsageTx: $registerTx,
-      accrueInterestTx: $accrueTx,
-      detectDelinquencyTx: $detectDelinquencyTx,
-      triggerDefaultTx: $triggerDefaultTx,
-      snapshots: {
-        afterUsage: "/tmp/pure-finance/agreement_after_usage.txt",
-        afterDay1Accrual: "/tmp/pure-finance/agreement_after_day1_accrual.txt",
-        afterDelinquency: "/tmp/pure-finance/agreement_after_delinquency.txt",
-        afterDefault: "/tmp/pure-finance/agreement_after_default.txt"
-      }
-    }' > /tmp/pure_financing_timewarp.json
-else
-  # Fallback still runs keyless pure-financing logic through harness warps.
-  (cd EqualFi && forge test --match-path test/stress/default-cascade.t.sol -vv > /tmp/pure-finance/default-cascade.log 2>&1 || true)
-  jq -n \
-    --arg runAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    --arg agreementId "$PURE_FINANCING_AGREEMENT_ID" \
-    --arg reason "live_anvil_timewarp_flow_failed" \
-    --arg stderrPath "/tmp/pure-finance/register-usage.err" \
-    --arg fallbackLog "/tmp/pure-finance/default-cascade.log" \
-    '{
-      runAt: $runAt,
-      mode: "fallback_harness_test",
-      agreementId: $agreementId,
-      reason: $reason,
-      registerUsageErrorPath: $stderrPath,
-      fallbackLogPath: $fallbackLog
-    }' > /tmp/pure_financing_timewarp.json
-fi
-
-cat /tmp/pure_financing_timewarp.json
+# Day 6: default (after cure period)
+cast rpc --rpc-url $RPC_URL anvil_increaseTime 259201 && cast rpc --rpc-url $RPC_URL evm_mine
+cast send --rpc-url $RPC_URL --private-key $PK $DIAMOND_ADDRESS "triggerDefault(uint256)" $AID
 ```
 
-## Step 8: Persist Outputs
+## Step 9: Run On-Chain Settlement Proof
+
+Standalone script that proves `TransactionSubmitter` → `registerUsage()` with real Anvil tx hashes:
+
+```bash
+cd mailbox-relayer
+export RPC_URL=http://127.0.0.1:8545
+export DIAMOND_ADDRESS="<from Step 2>"
+export CHAIN_ID=31337
+export RELAYER_PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+
+npx tsx scripts/prove-onchain-settlement.ts
+```
+
+## Step 10: Persist Outputs
 
 ```bash
 {
@@ -634,20 +515,23 @@ cat /tmp/pure_financing_timewarp.json
   echo '# Pure Financing Lifecycle (Anvil Timewarp)'
   echo
   echo '```json'
-  cat /tmp/pure_financing_timewarp.json
+  cat /tmp/pure_financing_timewarp.json 2>/dev/null || echo '{}'
   echo '```'
 } > PURE-FINANCING-TIMEWARP-OUTPUTS.md
 ```
 
 ## Expected Success Criteria
 
-1. ERC-6551 registry deployed at canonical `0x000000006551c19487814612e58FE06813775758`.
-2. EntryPoint v0.7 bytecode present at the resolved `ENTRYPOINT_ADDRESS` from `account-abstraction/deployments/dev/EntryPoint.json`.
-3. Diamond deploy broadcast exists and `DIAMOND_ADDRESS` is set.
-4. Relayer starts with Anvil phase2 env (`RPC_URL`, `CHAIN_ID`, `DIAMOND_ADDRESS`, `RELAYER_PRIVATE_KEY`).
-5. Selected provider lifecycle outputs (any of Bankr/Venice/Lambda/RunPod) are written to `LIFECYCLE-OUTPUTS.md`.
-6. Pure financing timewarp workflow always runs and writes `PURE-FINANCING-TIMEWARP-OUTPUTS.md` (live anvil flow or fallback harness test).
+1. Diamond deployed with all facets (base + V1 + agentic/EqualScale).
+2. Relayer starts in Phase 2 mode (`phase2 signer configured` in log).
+3. Provider activations succeed for providers with valid API keys.
+4. ACP lifecycle produces 5 real tx hashes, all `status: success`.
+5. Settlement proof produces real `registerUsage` tx hashes on Anvil.
+6. Pure financing timewarp completes Active → Delinquent → Defaulted.
 
 ## Cleanup
 
-Stop terminals with `Ctrl+C`.
+```bash
+pkill -f anvil
+pkill -f "node dist/index"
+```
