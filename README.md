@@ -375,6 +375,23 @@ Financeable.
 
 ---
 
+## Governance Note: Diamond Upgrade Path
+
+EqualScale supports timelocked governance for diamond upgrades via `AdminGovernanceFacet.executeDiamondCut()`, which enforces `owner OR timelock` access control.
+
+**Current state (hackathon/demo):**
+- `DiamondCutFacet.diamondCut()` remains owner-only for testing flexibility
+- This creates a bypass path that would not exist in production mainnet
+
+**Production intent:**
+- Remove `DiamondCutFacet` or route through `enforceOwnerOrTimelock()`
+- Deploy behind OpenZeppelin `TimelockController` with enforced delay
+- All admin actions (parameter changes, facet upgrades) would route through timelock
+
+The architecture supports censorship-resistant governance. The bypass exists for hackathon iteration speed, not as a design choice for mainnet.
+
+---
+
 ## One-Line Summary
 
 EqualScale is on-chain credit infrastructure for autonomous agents, combining **ERC-8004 identity**, **ERC-8183 / ACP job orchestration**, **Venice / Bankr inference rails**, **RunPod / Lambda compute rails**, and **solo, pooled, and compute financing paths** so agents can do more than act — they can finance action.
